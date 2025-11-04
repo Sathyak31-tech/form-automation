@@ -26,7 +26,19 @@ const ProcessForms = ({ data }) => {
 
       if (response.data.success) {
         setIsCompleted(true);
-        setDownloadLinks(response.data.downloadLinks || []);
+        
+        // Store files data if returned as base64 (for Vercel serverless)
+        const links = response.data.downloadLinks || [];
+        if (response.data.files) {
+          // Attach file data to each link
+          const linksWithFiles = links.map(link => ({
+            ...link,
+            fileData: response.data.files[link.filename]
+          }));
+          setDownloadLinks(linksWithFiles);
+        } else {
+          setDownloadLinks(links);
+        }
       } else {
         setError(response.data.error || 'Failed to process forms');
       }
@@ -37,8 +49,35 @@ const ProcessForms = ({ data }) => {
     }
   };
 
-  const downloadFile = (filename) => {
-    // Get API URL from environment variable or use relative path
+  const downloadFile = (filename, fileData = null) => {
+    // If file data is provided (base64 from serverless function), use it
+    if (fileData) {
+      try {
+        // Convert base64 to blob
+        const byteCharacters = atob(fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        return;
+      } catch (err) {
+        console.error('Error downloading file:', err);
+      }
+    }
+    
+    // Fallback to API download endpoint
     const apiUrl = process.env.REACT_APP_API_URL || '';
     const downloadUrl = `${apiUrl}/api/download/${encodeURIComponent(filename)}`;
     window.open(downloadUrl, '_blank');
@@ -133,7 +172,7 @@ const ProcessForms = ({ data }) => {
                           </div>
                         </div>
                         <button
-                          onClick={() => downloadFile(link.filename)}
+                          onClick={() => downloadFile(link.filename, link.fileData)}
                           className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
                         >
                           Download

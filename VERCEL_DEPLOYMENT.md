@@ -4,7 +4,7 @@ This guide will help you deploy the Form Automation frontend to Vercel.
 
 ## Important Notes
 
-⚠️ **The backend (Flask server) cannot run on Vercel directly.** You need to deploy the backend separately on a platform that supports Python/Flask applications, such as:
+ **The backend (Flask server) cannot run on Vercel directly.** You need to deploy the backend separately on a platform that supports Python/Flask applications, such as:
 - **Railway** (recommended - easy setup)
 - **Render** (free tier available)
 - **Heroku** (paid)
