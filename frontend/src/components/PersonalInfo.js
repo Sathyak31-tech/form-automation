@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Phone, Calendar, Globe, CreditCard, FileText, MapPin, Image } from 'lucide-react';
+import { User, Mail, Phone, Calendar, Globe, CreditCard, FileText, Image } from 'lucide-react';
 
 const PersonalInfo = ({ data, updateData }) => {
   const [signaturePreview, setSignaturePreview] = useState(data.signature_image || null);
