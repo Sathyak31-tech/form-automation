@@ -13,6 +13,7 @@
   "email": "john.doe@example.com",
   "religion": "Hindu",
   "phone": "9876543210",
+  "signature_image_path": "signature.png",
   "current_address": {
     "full_address": "123 Main Street, Downtown, Bangalore, Karnataka 560001",
     "state": "Karnataka",

@@ -34,6 +34,20 @@ def process_forms():
         
         # Create temporary directory for this session
         with tempfile.TemporaryDirectory() as temp_dir:
+            # Handle signature image - save it to temp directory if provided
+            signature_image_path = None
+            if form_data.get('signature_image'):
+                signature_base64 = form_data.get('signature_image')
+                # Remove data URL prefix if present
+                if ',' in signature_base64:
+                    signature_base64 = signature_base64.split(',')[1]
+                
+                # Save signature image to temp directory
+                import base64
+                signature_image_path = os.path.join(temp_dir, 'signature.png')
+                with open(signature_image_path, 'wb') as f:
+                    f.write(base64.b64decode(signature_base64))
+            
             # Transform form data to match populator's expected structure
             transformed_data = {
             "source_file": "Frontend Input",
@@ -60,7 +74,8 @@ def process_forms():
                         "iso": form_data.get('passport_expiry_date', '')
                     },
                     "email": form_data.get('email', ''),
-                    "religion": form_data.get('religion', '')
+                    "religion": form_data.get('religion', ''),
+                    "signature_image_path": signature_image_path
                 },
                 "employment_history": [
                     {
@@ -142,12 +157,16 @@ def process_forms():
             
             # Run the populator script
             populator_script = os.path.join(os.path.dirname(__file__), 'populator.py')
+            # Pass signature image path as environment variable if available
+            env = os.environ.copy()
+            if signature_image_path:
+                env['SIGNATURE_IMAGE_PATH'] = signature_image_path
             result = subprocess.run([
                 'python', populator_script, 
                 json_file, 
                 templates_dir, 
                 output_dir
-            ], capture_output=True, text=True, cwd=os.path.dirname(__file__))
+            ], capture_output=True, text=True, cwd=os.path.dirname(__file__), env=env)
             
             if result.returncode != 0:
                 return jsonify({

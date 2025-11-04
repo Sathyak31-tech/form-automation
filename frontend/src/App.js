@@ -28,6 +28,7 @@ function App() {
     passport_issue_date: '',
     passport_expiry_date: '',
     religion: '',
+    signature_image: '',
     
     // Address Information
     current_address: {

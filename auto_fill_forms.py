@@ -10,6 +10,7 @@ import os
 import sys
 import requests
 import time
+import base64
 
 def main():
     # Configuration
@@ -33,6 +34,41 @@ def main():
         print(f"✅ Test data loaded successfully")
         print(f"   Name: {test_data.get('name', 'N/A')}")
         print(f"   Email: {test_data.get('email', 'N/A')}")
+        
+        # Handle signature image if path is provided
+        signature_path = test_data.get('signature_image_path')
+        if signature_path:
+            # Check if signature file exists
+            if os.path.exists(signature_path):
+                print(f"📷 Loading signature image from {signature_path}...")
+                try:
+                    # Read image file and convert to base64
+                    with open(signature_path, 'rb') as img_file:
+                        img_data = img_file.read()
+                        img_base64 = base64.b64encode(img_data).decode('utf-8')
+                        
+                        # Determine MIME type based on file extension
+                        ext = os.path.splitext(signature_path)[1].lower()
+                        mime_types = {
+                            '.png': 'image/png',
+                            '.jpg': 'image/jpeg',
+                            '.jpeg': 'image/jpeg',
+                            '.gif': 'image/gif'
+                        }
+                        mime_type = mime_types.get(ext, 'image/png')
+                        
+                        # Add data URL prefix
+                        test_data['signature_image'] = f'data:{mime_type};base64,{img_base64}'
+                        print(f"✅ Signature image loaded successfully")
+                    # Remove the path field as we now have the base64 data
+                    test_data.pop('signature_image_path', None)
+                except Exception as e:
+                    print(f"⚠️  Warning: Could not load signature image: {str(e)}")
+                    print(f"   Continuing without signature...")
+            else:
+                print(f"⚠️  Warning: Signature image file not found: {signature_path}")
+                print(f"   Continuing without signature...")
+                test_data.pop('signature_image_path', None)
     except Exception as e:
         print(f" Error reading test data: {str(e)}")
         sys.exit(1)

@@ -115,7 +115,7 @@ const ProcessForms = ({ data }) => {
                 <p className="text-xs text-gray-500 mb-3">
                   📝 Download editable Word documents with all your information filled in.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   {downloadLinks.map((link, index) => (
                     <div key={index} className="border border-gray-200 rounded-lg p-3">
                       <div className="flex items-center justify-between">

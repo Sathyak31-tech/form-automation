@@ -1,9 +1,42 @@
-import React from 'react';
-import { User, Mail, Phone, Calendar, Globe, CreditCard, FileText, MapPin } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Mail, Phone, Calendar, Globe, CreditCard, FileText, MapPin, Image } from 'lucide-react';
 
 const PersonalInfo = ({ data, updateData }) => {
+  const [signaturePreview, setSignaturePreview] = useState(data.signature_image || null);
+
+  useEffect(() => {
+    if (data.signature_image && !signaturePreview) {
+      setSignaturePreview(data.signature_image);
+    }
+  }, [data.signature_image, signaturePreview]);
+
   const handleChange = (field, value) => {
     updateData('personal', { [field]: value });
+  };
+
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please upload an image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result;
+        setSignaturePreview(base64String);
+        updateData('personal', { signature_image: base64String });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -254,6 +287,45 @@ const PersonalInfo = ({ data, updateData }) => {
               className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
           </div>
+        </div>
+
+        {/* Signature Image Upload */}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Signature Image
+          </label>
+          <div className="relative">
+            <Image className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleSignatureUpload}
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+          </div>
+          {signaturePreview && (
+            <div className="mt-4 p-4 border border-gray-300 rounded-md bg-gray-50">
+              <p className="text-sm text-gray-600 mb-2">Signature Preview:</p>
+              <img 
+                src={signaturePreview} 
+                alt="Signature preview" 
+                className="max-w-xs max-h-32 border border-gray-300 rounded"
+              />
+            </div>
+          )}
+          {data.signature_image && !signaturePreview && (
+            <div className="mt-4 p-4 border border-gray-300 rounded-md bg-gray-50">
+              <p className="text-sm text-gray-600 mb-2">Signature Preview:</p>
+              <img 
+                src={data.signature_image} 
+                alt="Signature preview" 
+                className="max-w-xs max-h-32 border border-gray-300 rounded"
+              />
+            </div>
+          )}
+          <p className="mt-2 text-xs text-gray-500">
+            Upload a clear image of your signature. This will be inserted wherever signature is required in the forms.
+          </p>
         </div>
       </div>
 

@@ -13,6 +13,7 @@ from docx.oxml import OxmlElement
 from docx import Document
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
+from docx.shared import Inches
 
 
 def today_str(fmt: str = "%d-%m-%Y") -> str:
@@ -89,6 +90,19 @@ class SmartFormPopulator:
         self.addr: dict = self.form_fields.get("address_history", {}) or {}
         self.refs: list = self.form_fields.get("references", []) or []
         self.gaps: Union[dict, list] = self.form_fields.get("gaps", {}) or {}
+        
+        # Signature image path
+        self.signature_image_path: Optional[str] = self.pd.get("signature_image_path") or os.environ.get("SIGNATURE_IMAGE_PATH")
+        
+        # Debug: Print signature path if found
+        if self.signature_image_path:
+            print(f"📷 Signature image path found: {self.signature_image_path}")
+            if os.path.exists(self.signature_image_path):
+                print(f"✅ Signature image file exists")
+            else:
+                print(f"⚠️  Warning: Signature image file does NOT exist at: {self.signature_image_path}")
+        else:
+            print(f"⚠️  No signature image path provided")
 
     # ----------------------------
     # Structure extraction helpers
@@ -151,6 +165,86 @@ class SmartFormPopulator:
         t.text = new_text
         r.append(t)
         p_el.append(r)
+    
+    def _insert_signature_image(self, paragraph) -> bool:
+        """Insert signature image into a paragraph if signature image path exists."""
+        if not self.signature_image_path:
+            return False
+        
+        if not os.path.exists(self.signature_image_path):
+            print(f"Warning: Signature image path does not exist: {self.signature_image_path}")
+            return False
+        
+        try:
+            # Clear existing text/runs
+            paragraph.clear()
+            
+            # Add the signature image
+            run = paragraph.add_run()
+            run.add_picture(self.signature_image_path, width=Inches(2.0))  # 2 inches wide
+            print(f"✅ Inserted signature image from {self.signature_image_path}")
+            return True
+        except Exception as e:
+            print(f"Warning: Could not insert signature image: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+    
+    def _cell_has_image(self, cell) -> bool:
+        """Check if a cell already contains an image."""
+        try:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    # Check if run has an image (drawing element)
+                    if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
+                        return True
+            return False
+        except:
+            return False
+    
+    def _insert_signature_in_cell(self, cell) -> bool:
+        """Insert signature image into a table cell."""
+        if not self.signature_image_path:
+            return False
+        
+        if not os.path.exists(self.signature_image_path):
+            print(f"Warning: Signature image path does not exist: {self.signature_image_path}")
+            return False
+        
+        try:
+            # Don't overwrite if cell already has an image
+            if self._cell_has_image(cell):
+                return False
+            
+            # Clear ALL content from the cell (text, runs, everything)
+            # This is important because the cell might contain "Signature" as text
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    paragraph._element.remove(run._element)
+            
+            # Clear all paragraphs except the first one
+            while len(cell.paragraphs) > 1:
+                cell._element.remove(cell.paragraphs[-1]._element)
+            
+            # Get or create the first paragraph
+            if len(cell.paragraphs) == 0:
+                paragraph = cell.add_paragraph()
+            else:
+                paragraph = cell.paragraphs[0]
+            
+            # Clear any remaining content
+            paragraph.clear()
+            
+            # Add signature image
+            run = paragraph.add_run()
+            run.add_picture(self.signature_image_path, width=Inches(2.0))  # 2 inches wide
+            print(f"✅ Inserted signature image in cell from {self.signature_image_path}")
+            return True
+        except Exception as e:
+            print(f"Warning: Could not insert signature image in cell: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return False
         
     DECLARATION_KEYWORDS = [
     (["name", "member name", "full name", "candidate name"], "name"),
@@ -645,6 +739,182 @@ class SmartFormPopulator:
     # ----------------------------
     # Fillers
     # ----------------------------
+    def _is_company_side(self, cell_text: str, row_text: str = "") -> bool:
+        """Check if this is the company's side (ACCOLITE) vs user's side."""
+        text_lower = (cell_text + " " + row_text).lower()
+        # Company indicators
+        company_keywords = ["accolite", "company", "employer", "organization"]
+        # User indicators  
+        user_keywords = ["you", "employee", "candidate"]
+        
+        # If it mentions company keywords and not user keywords, it's company side
+        has_company = any(kw in text_lower for kw in company_keywords)
+        has_user = any(kw in text_lower for kw in user_keywords)
+        
+        if has_company and not has_user:
+            return True
+        return False
+    
+    def _is_user_side(self, cell_text: str, row_text: str = "", name: str = "") -> bool:
+        """Check if this is the user's side (You/Employee) vs company's side."""
+        text_lower = (cell_text + " " + row_text).lower()
+        name_lower = name.lower() if name else ""
+        
+        # User indicators
+        user_keywords = ["you", "employee", "candidate"]
+        # Company indicators
+        company_keywords = ["accolite", "company", "employer", "organization"]
+        
+        # Check if name appears (user's side)
+        if name and name_lower in text_lower:
+            return True
+        
+        # If it mentions user keywords and not company keywords, it's user side
+        has_user = any(kw in text_lower for kw in user_keywords)
+        has_company = any(kw in text_lower for kw in company_keywords)
+        
+        if has_user and not has_company:
+            return True
+        
+        # Default: if we can't determine, assume it's user side if it's the rightmost column
+        return False
+
+    def _fill_signatures_everywhere(self, doc: Document) -> int:
+        """Fill signature fields in all paragraphs and tables."""
+        fixes = 0
+        name = self._get("name")
+        
+        # Scan all paragraphs for signature fields
+        for p in doc.paragraphs:
+            text = (p.text or "").strip()
+            text_lower = text.lower()
+            # Look for various signature patterns
+            if (text_lower == "signature:" or 
+                text_lower == "signature" or
+                text_lower.endswith("signature:") or
+                (":" in text and "signature" in text_lower and len(text) < 100)):
+                # Only insert if paragraph is mostly empty or just contains placeholder text
+                if self._is_placeholder(text) or text_lower in ["signature:", "signature"]:
+                    # Check if this is user's side (not company side)
+                    if not self._is_company_side(text):
+                        if self._insert_signature_image(p):
+                            fixes += 1
+        
+        # Scan all tables for signature fields
+        for table in doc.tables:
+            # Check if this table has a multi-column signature section (like LOA/NDA)
+            # Look for headers that indicate left=company, right=user
+            has_multi_column_signature = False
+            user_column_idx = None  # Track which column is user's side
+            
+            # Check header rows to identify column structure
+            for header_row_idx in range(min(5, len(table.rows))):
+                header_row = table.rows[header_row_idx]
+                if len(header_row.cells) >= 2:
+                    left_header = (header_row.cells[0].text or "").strip().lower()
+                    right_header = (header_row.cells[-1].text or "").strip().lower()
+                    
+                    # Check if left has company name and right has user indicator
+                    if (("accolite" in left_header or "company" in left_header) and 
+                        ("you" in right_header or (name and name.lower() in right_header))):
+                        has_multi_column_signature = True
+                        user_column_idx = len(header_row.cells) - 1  # Rightmost column
+                        break
+            
+            for row_idx, row in enumerate(table.rows):
+                if len(row.cells) < 2:
+                    continue
+                
+                # Check all cells for signature labels
+                has_signature_label = False
+                signature_label_col = None
+                
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip().lower()
+                    if "signature" in cell_text:
+                        has_signature_label = True
+                        signature_label_col = cell_idx
+                        break
+                
+                if has_signature_label:
+                    # For multi-column signature sections, only fill right side (user's side)
+                    if has_multi_column_signature and user_column_idx is not None:
+                        # Only fill the rightmost column (user's side), skip left column
+                        if len(row.cells) > user_column_idx:
+                            user_cell = row.cells[user_column_idx]
+                            cell_content = (user_cell.text or "").strip()
+                            if self._is_placeholder(cell_content) or not cell_content:
+                                if self._insert_signature_in_cell(user_cell):
+                                    fixes += 1
+                        # Skip left side signature - don't fill column 0 if it's company side
+                        continue
+                    
+                    # For single-column or non-multi-column tables, fill normally
+                    # Fill the cell after the signature label, or rightmost if label is in leftmost
+                    if signature_label_col is not None and signature_label_col < len(row.cells) - 1:
+                        # Fill the cell after the label
+                        fill_cell = row.cells[signature_label_col + 1]
+                    else:
+                        # Fill rightmost cell
+                        fill_cell = row.cells[-1]
+                    
+                    cell_content = (fill_cell.text or "").strip()
+                    if self._is_placeholder(cell_content) or not cell_content:
+                        if self._insert_signature_in_cell(fill_cell):
+                            fixes += 1
+                
+                # For multi-column signature sections, also check for empty cells after "Print Name" rows
+                # These are often signature cells in LOA/NDA forms (empty cells that should have signatures)
+                if has_multi_column_signature and user_column_idx is not None:
+                    left_text = (row.cells[0].text or "").strip().lower()
+                    # Check if this row has "Print Name" in the left cell - signature is usually in the NEXT row
+                    if "print name" in left_text:
+                        # Check the next row - it might be the signature row (often empty)
+                        if row_idx + 1 < len(table.rows):
+                            next_row = table.rows[row_idx + 1]
+                            if len(next_row.cells) > user_column_idx:
+                                # Check if right cell is empty (likely signature cell)
+                                user_cell = next_row.cells[user_column_idx]
+                                cell_content = (user_cell.text or "").strip()
+                                next_left = (next_row.cells[0].text or "").strip().lower()
+                                # If next row's left cell is "Signature" or empty, and right cell is empty, it's signature
+                                if ((next_left == "signature" or next_left == "" or self._is_placeholder(next_left)) and 
+                                    (self._is_placeholder(cell_content) or not cell_content) and 
+                                    not self._cell_has_image(user_cell)):
+                                    print(f"   Found signature cell in next row after 'Print Name'")
+                                    if self._insert_signature_in_cell(user_cell):
+                                        fixes += 1
+                        # Also check the current row's right cell if it's empty and we're in signature section
+                        if len(row.cells) > user_column_idx:
+                            user_cell = row.cells[user_column_idx]
+                            cell_content = (user_cell.text or "").strip()
+                            # If right cell is empty and we just filled "Print Name" on left, this might be signature
+                            if (self._is_placeholder(cell_content) or not cell_content) and not self._cell_has_image(user_cell):
+                                # Check if previous row was also "Print Name" or similar to confirm we're in signature section
+                                if row_idx > 0:
+                                    prev_row = table.rows[row_idx - 1]
+                                    if len(prev_row.cells) > 0:
+                                        prev_left = (prev_row.cells[0].text or "").strip().lower()
+                                        if "print name" in prev_left or "title" in prev_left or "date" in prev_left:
+                                            # This is likely a signature cell - fill it
+                                            print(f"   Found signature cell in current row (after signature section indicators)")
+                                            if self._insert_signature_in_cell(user_cell):
+                                                fixes += 1
+                
+                # Check individual cells for standalone signature fields
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip().lower()
+                    if cell_text == "signature:" or cell_text == "signature":
+                        # For multi-column tables, only fill user's column
+                        if has_multi_column_signature and user_column_idx is not None:
+                            if cell_idx != user_column_idx:
+                                continue  # Skip company side
+                        
+                        if self._insert_signature_in_cell(cell):
+                            fixes += 1
+        
+        return fixes
+
     def populate_form_smart(self, template_path: str, output_path: str) -> bool:
         print(f"🤖 Smart Processing: {os.path.basename(template_path)}")
 
@@ -653,6 +923,9 @@ class SmartFormPopulator:
 
         doc = Document(template_path)
         fixes_applied = 0
+        
+        # Fill signatures everywhere first (before other field fills)
+        fixes_applied += self._fill_signatures_everywhere(doc)
 
         # Force simple 6-field behavior for forms that just need the basics
         name_lower = os.path.basename(template_path).lower()
@@ -710,11 +983,27 @@ class SmartFormPopulator:
 
     def fill_background_verification_form(self, doc: Document, structure: Dict) -> int:
         fixes_applied = 0
+        
+        # 0) Fill signature fields in paragraphs (standalone signature fields)
+        for p in doc.paragraphs:
+            text = (p.text or "").strip().lower()
+            # Look for standalone "Signature:" or "Signature" fields
+            if text == "signature:" or text == "signature" or (text.endswith("signature:") and len(text) < 50):
+                if self._insert_signature_image(p):
+                    fixes_applied += 1
 
         # 1) Paragraph fields that end with ":" → insert values
         for info in structure["paragraphs"]:
             if info["is_field"] and info["text"].strip().endswith(":"):
                 ft = info["field_type"]
+                
+                # Handle signature fields with image insertion
+                if ft == "signature":
+                    p = doc.paragraphs[info["index"]]
+                    if self._insert_signature_image(p):
+                        fixes_applied += 1
+                    continue
+                
                 val = self.get_field_value(ft)
                 if val:
                     p = doc.paragraphs[info["index"]]
@@ -770,7 +1059,26 @@ class SmartFormPopulator:
         while len(edu_slots) < 5:
             edu_slots.append(None)
 
-        # 3) Fill tables
+        # 3) Fill signature fields in tables first (before other table fills)
+        for tinfo in structure["tables"]:
+            table = doc.tables[tinfo["index"]]
+            for row in table.rows:
+                if len(row.cells) < 2:
+                    continue
+                # Check if left cell contains "signature" label
+                left_text = (row.cells[0].text or "").strip().lower()
+                if "signature" in left_text:
+                    # Insert signature in the rightmost cell
+                    if self._insert_signature_in_cell(row.cells[-1]):
+                        fixes_applied += 1
+                # Also check all cells for standalone signature fields
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip().lower()
+                    if cell_text == "signature:" or cell_text == "signature" or (cell_text.endswith("signature:") and len(cell_text) < 50):
+                        if self._insert_signature_in_cell(cell):
+                            fixes_applied += 1
+        
+        # 4) Fill other tables
         for tinfo in structure["tables"]:
             table = doc.tables[tinfo["index"]]
             section = self._classify_table(table)
@@ -1285,19 +1593,98 @@ class SmartFormPopulator:
             elif re.fullmatch(r"\s*Date\s*:\s*", t):
                 p.text = f"Date: {today_str()}"; fixes += 1
 
+        # Find signature cells in tables - look for empty cells after signature labels
         for table in doc.tables:
-            for row in table.rows:
-                if len(row.cells) >= 2:
-                    L = row.cells[0].text.strip()
-                    if re.search(r"\bPrint Name\b", L, re.I):
+            # Check if this is a multi-column signature table (company vs user)
+            has_multi_column = False
+            user_column_idx = None
+            
+            # Check header rows to identify structure
+            for header_row_idx in range(min(5, len(table.rows))):
+                header_row = table.rows[header_row_idx]
+                if len(header_row.cells) >= 2:
+                    left_header = (header_row.cells[0].text or "").strip().lower()
+                    right_header = (header_row.cells[-1].text or "").strip().lower()
+                    if ("accolite" in left_header or "company" in left_header) and ("you" in right_header or (name and name.lower() in right_header)):
+                        has_multi_column = True
+                        user_column_idx = len(header_row.cells) - 1
+                        break
+            
+            for row_idx, row in enumerate(table.rows):
+                if len(row.cells) < 2:
+                    continue
+                
+                # Check if left cell contains signature label
+                L = (row.cells[0].text or "").strip()
+                left_text = L.lower()
+                
+                # IMPORTANT: Check for signature FIRST before filling other fields
+                # This prevents text from overwriting the signature image
+                if "signature" in left_text:
+                    # This is a signature row - insert signature in the right column only
+                    print(f"🔍 NDA: Found signature row, left='{L}', has_multi_column={has_multi_column}, user_column_idx={user_column_idx}")
+                    if has_multi_column and user_column_idx is not None and len(row.cells) > user_column_idx:
+                        # Only fill user's side (rightmost column)
+                        user_cell = row.cells[user_column_idx]
+                        cell_content = (user_cell.text or "").strip()
+                        print(f"   NDA: User cell content='{cell_content}', is_placeholder={self._is_placeholder(cell_content)}")
+                        # Insert signature if cell is empty, placeholder, or contains "Signature" text
+                        if (self._is_placeholder(cell_content) or not cell_content or 
+                            cell_content.lower() == "signature"):
+                            print(f"   NDA: Attempting signature insertion...")
+                            if self._insert_signature_in_cell(user_cell):
+                                fixes += 1
+                                print(f"   NDA: ✅ Signature inserted!")
+                            else:
+                                print(f"   NDA: ❌ Signature insertion failed")
+                    elif not has_multi_column:
+                        # Single column - fill rightmost cell
+                        cell_content = (row.cells[-1].text or "").strip()
+                        if (self._is_placeholder(cell_content) or not cell_content or 
+                            cell_content.lower() == "signature"):
+                            if self._insert_signature_in_cell(row.cells[-1]):
+                                fixes += 1
+                    continue  # Skip to next row, don't process this as a text field
+                
+                # Process other text fields only if not a signature row
+                if re.search(r"\bPrint Name\b", L, re.I):
+                    # Check if cell already has an image (signature), don't overwrite
+                    if not self._cell_has_image(row.cells[-1]):
                         row.cells[-1].text = name; fixes += 1
-                    elif re.search(r"\bTitle\b", L, re.I):
+                elif re.search(r"\bTitle\b", L, re.I):
+                    # Check if cell already has an image (signature), don't overwrite
+                    if not self._cell_has_image(row.cells[-1]):
                         row.cells[-1].text = title; fixes += 1
-                    elif re.search(r"\bDate\b", L, re.I):
+                elif re.search(r"\bDate\b", L, re.I):
+                    # Check if cell already has an image (signature), don't overwrite
+                    if not self._cell_has_image(row.cells[-1]):
                         row.cells[-1].text = today_str(); fixes += 1
-                    # Fill "Print Name" fields in the signature section
-                    elif L == "Print Name":
+                # Fill "Print Name" fields in the signature section
+                elif L == "Print Name":
+                    # Check if cell already has an image (signature), don't overwrite
+                    if not self._cell_has_image(row.cells[-1]):
                         row.cells[-1].text = name; fixes += 1
+                
+                # After processing all text fields, check if we're in a signature section and fill empty signature cells
+                # This handles cases where signature cells don't have explicit "Signature" labels
+                if has_multi_column and user_column_idx is not None:
+                    # If we're in a row that has "Print Name", "Title", or "Date" in left column,
+                    # and the next row has empty cells, it might be the signature row
+                    left_text = (row.cells[0].text or "").strip().lower()
+                    if any(label in left_text for label in ["print name", "title", "date"]):
+                        # Check if next row has empty right cell (likely signature)
+                        if row_idx + 1 < len(table.rows):
+                            next_row = table.rows[row_idx + 1]
+                            if len(next_row.cells) > user_column_idx:
+                                next_left = (next_row.cells[0].text or "").strip().lower()
+                                next_right = (next_row.cells[user_column_idx].text or "").strip()
+                                # If next row's left is "Signature" or empty, and right is empty, fill signature
+                                if (next_left == "signature" or next_left == "" or self._is_placeholder(next_left)) and \
+                                   (self._is_placeholder(next_right) or not next_right) and \
+                                   not self._cell_has_image(next_row.cells[user_column_idx]):
+                                    print(f"   NDA: Found empty signature cell after '{L}' row")
+                                    if self._insert_signature_in_cell(next_row.cells[user_column_idx]):
+                                        fixes += 1
                 
                 # Check for "By:" fields in any cell of the row
                 if len(row.cells) >= 3:
@@ -1306,7 +1693,9 @@ class SmartFormPopulator:
                         row.cells[1].text.strip() == "" and 
                         row.cells[2].text.strip() == "By:"):
                         # Fill Cell 2 (the rightmost "By:" field) with employee name
-                        row.cells[2].text = f"By: {name}"; fixes += 1
+                        # But check if there's already a signature image
+                        if not self._cell_has_image(row.cells[2]):
+                            row.cells[2].text = f"By: {name}"; fixes += 1
         return fixes
 
     def fill_declaration_form(self, doc: Document, structure: Dict) -> int:
@@ -1352,22 +1741,97 @@ class SmartFormPopulator:
             elif re.fullmatch(r"\s*Date\s*:\s*", t):
                 p.text = f"Date: {today_str()}"; fixes += 1
 
-        # Fill table fields including "Print Name" fields
+        # Find signature cells in tables - look for empty cells after signature labels
         for table in doc.tables:
-            for row in table.rows:
+            # Check if this is a multi-column signature table (company vs user)
+            has_multi_column = False
+            user_column_idx = None
+            
+            # Check header rows to identify structure
+            for header_row_idx in range(min(5, len(table.rows))):
+                header_row = table.rows[header_row_idx]
+                if len(header_row.cells) >= 2:
+                    left_header = (header_row.cells[0].text or "").strip().lower()
+                    right_header = (header_row.cells[-1].text or "").strip().lower()
+                    if ("accolite" in left_header or "company" in left_header) and ("you" in right_header or (name and name.lower() in right_header)):
+                        has_multi_column = True
+                        user_column_idx = len(header_row.cells) - 1
+                        break
+            
+            for row_idx, row in enumerate(table.rows):
                 if len(row.cells) >= 2:
-                    L = row.cells[0].text.strip()
+                    L = (row.cells[0].text or "").strip()
+                    left_text = L.lower()
+                    
+                    # IMPORTANT: Check for signature FIRST before filling other fields
+                    # This prevents text from overwriting the signature image
+                    if "signature" in left_text:
+                        # This is a signature row - insert signature in the right column only
+                        print(f"🔍 LOA: Found signature row, left='{L}', has_multi_column={has_multi_column}, user_column_idx={user_column_idx}")
+                        if has_multi_column and user_column_idx is not None and len(row.cells) > user_column_idx:
+                            # Only fill user's side (rightmost column)
+                            user_cell = row.cells[user_column_idx]
+                            cell_content = (user_cell.text or "").strip()
+                            print(f"   LOA: User cell content='{cell_content}', is_placeholder={self._is_placeholder(cell_content)}")
+                            # Insert signature if cell is empty, placeholder, or contains "Signature" text
+                            if (self._is_placeholder(cell_content) or not cell_content or 
+                                cell_content.lower() == "signature"):
+                                print(f"   LOA: Attempting signature insertion...")
+                                if self._insert_signature_in_cell(user_cell):
+                                    fixes += 1
+                                    print(f"   LOA: ✅ Signature inserted!")
+                                else:
+                                    print(f"   LOA: ❌ Signature insertion failed")
+                        elif not has_multi_column:
+                            # Single column - fill rightmost cell
+                            if self._is_placeholder(row.cells[-1].text) or not row.cells[-1].text.strip():
+                                if self._insert_signature_in_cell(row.cells[-1]):
+                                    fixes += 1
+                        continue  # Skip to next row, don't process this as a text field
+                    
+                    # Process other text fields only if not a signature row
                     if re.search(r"\bName\b", L, re.I):
-                        row.cells[-1].text = name; fixes += 1
+                        # Check if cell already has an image (signature), don't overwrite
+                        if not self._cell_has_image(row.cells[-1]):
+                            row.cells[-1].text = name; fixes += 1
                     elif re.search(r"\bPosition\b", L, re.I):
-                        row.cells[-1].text = title; fixes += 1
+                        # Check if cell already has an image (signature), don't overwrite
+                        if not self._cell_has_image(row.cells[-1]):
+                            row.cells[-1].text = title; fixes += 1
                     elif re.search(r"\bEmployer\b", L, re.I):
-                        row.cells[-1].text = employer; fixes += 1
+                        # Check if cell already has an image (signature), don't overwrite
+                        if not self._cell_has_image(row.cells[-1]):
+                            row.cells[-1].text = employer; fixes += 1
                     elif re.search(r"\bDate\b", L, re.I):
-                        row.cells[-1].text = today_str(); fixes += 1
+                        # Check if cell already has an image (signature), don't overwrite
+                        if not self._cell_has_image(row.cells[-1]):
+                            row.cells[-1].text = today_str(); fixes += 1
                     # Fill "Print Name" fields in the signature section
                     elif L == "Print Name":
-                        row.cells[-1].text = name; fixes += 1
+                        # Check if cell already has an image (signature), don't overwrite
+                        if not self._cell_has_image(row.cells[-1]):
+                            row.cells[-1].text = name; fixes += 1
+                
+                # After processing all text fields, check if we're in a signature section and fill empty signature cells
+                # This handles cases where signature cells don't have explicit "Signature" labels
+                if has_multi_column and user_column_idx is not None:
+                    # If we're in a row that has "Print Name", "Title", or "Date" in left column,
+                    # and the next row has empty cells, it might be the signature row
+                    left_text = (row.cells[0].text or "").strip().lower()
+                    if any(label in left_text for label in ["print name", "title", "date", "name", "position"]):
+                        # Check if next row has empty right cell (likely signature)
+                        if row_idx + 1 < len(table.rows):
+                            next_row = table.rows[row_idx + 1]
+                            if len(next_row.cells) > user_column_idx:
+                                next_left = (next_row.cells[0].text or "").strip().lower()
+                                next_right = (next_row.cells[user_column_idx].text or "").strip()
+                                # If next row's left is "Signature" or empty, and right is empty, fill signature
+                                if (next_left == "signature" or next_left == "" or self._is_placeholder(next_left)) and \
+                                   (self._is_placeholder(next_right) or not next_right) and \
+                                   not self._cell_has_image(next_row.cells[user_column_idx]):
+                                    print(f"   LOA: Found empty signature cell after '{L}' row")
+                                    if self._insert_signature_in_cell(next_row.cells[user_column_idx]):
+                                        fixes += 1
                 
                 # Check for "By:" fields in any cell of the row
                 if len(row.cells) >= 3:
@@ -1376,7 +1840,9 @@ class SmartFormPopulator:
                         row.cells[1].text.strip() == "" and 
                         row.cells[2].text.strip() == "By:"):
                         # Fill Cell 2 (the rightmost "By:" field) with employee name
-                        row.cells[2].text = f"By: {name}"; fixes += 1
+                        # But check if there's already a signature image
+                        if not self._cell_has_image(row.cells[2]):
+                            row.cells[2].text = f"By: {name}"; fixes += 1
         return fixes
 
     def fill_pf_account_form(self, doc: Document, structure: Dict) -> int:
@@ -1394,7 +1860,15 @@ class SmartFormPopulator:
             elif re.fullmatch(r"\s*Name:\s*", t):
                 p.text = f"Name: {name}"; fixes += 1
             elif re.search(r"Personal\s+Email\s+id\s*:\s*Signature\s*:\s*$", t, re.I):
-                p.text = f"Personal Email id: {email}   Signature:"; fixes += 1
+                p.text = f"Personal Email id: {email}   Signature:"
+                # Add signature image if available
+                if self.signature_image_path and os.path.exists(self.signature_image_path):
+                    try:
+                        run = p.add_run()
+                        run.add_picture(self.signature_image_path, width=Inches(2.0))
+                    except:
+                        pass
+                fixes += 1
             elif re.fullmatch(r"\s*Date\s*:\s*", t):
                 p.text = f"Date: {today_str()}"; fixes += 1
         return fixes
@@ -1447,7 +1921,16 @@ class SmartFormPopulator:
 
             # Special handling for "Personal Email id: Signature:" pattern
             if re.search(r"Personal\s+Email\s+id\s*:\s*Signature\s*:\s*$", txt, re.I):
-                p.text = f"Personal Email id: {email}   Signature:"; fixes += 1
+                # Fill email first
+                p.text = f"Personal Email id: {email}   Signature:"
+                # Then add signature image after the text if available
+                if self.signature_image_path and os.path.exists(self.signature_image_path):
+                    try:
+                        run = p.add_run()
+                        run.add_picture(self.signature_image_path, width=Inches(2.0))
+                    except:
+                        pass
+                fixes += 1
                 continue
 
             if self.EMAIL_LABEL_RE.search(txt):
@@ -1477,7 +1960,11 @@ class SmartFormPopulator:
                 left_text = (row.cells[0].text or "")
                 last = row.cells[-1]
 
-                if self.NAME_LABEL_RE.search(left_text):
+                # Check for signature fields in tables
+                if "signature" in left_text.lower():
+                    if self._insert_signature_in_cell(last):
+                        fixes += 1
+                elif self.NAME_LABEL_RE.search(left_text):
                     last.text = name; fixes += 1
                 elif self.FATHER_LABEL_RE.search(left_text):
                     last.text = father; fixes += 1
@@ -1827,7 +2314,11 @@ class SmartFormPopulator:
             for row in table.rows:
                 if len(row.cells) >= 2:
                     L = (row.cells[0].text or "").strip()
-                    if re.fullmatch(r"\s*Name\s*:?\s*", L, re.I):
+                    # Check for signature fields
+                    if "signature" in L.lower():
+                        if self._insert_signature_in_cell(row.cells[-1]):
+                            fixes += 1
+                    elif re.fullmatch(r"\s*Name\s*:?\s*", L, re.I):
                         row.cells[-1].text = name; fixes += 1
                     elif SmartFormPopulator.EMAIL_LABEL_RE.search(L):
                         row.cells[-1].text = email; fixes += 1
