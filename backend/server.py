@@ -14,7 +14,14 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-CORS(app)
+
+# CORS configuration - allow all origins for now, can be restricted in production
+# For production, set ALLOWED_ORIGINS environment variable (comma-separated list)
+allowed_origins = os.environ.get('ALLOWED_ORIGINS', '*').split(',')
+if '*' in allowed_origins:
+    CORS(app)  # Allow all origins
+else:
+    CORS(app, origins=allowed_origins)  # Allow specific origins only
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
@@ -240,6 +247,10 @@ if __name__ == '__main__':
     print("🚀 Starting Form Automation Backend Server...")
     print("📁 Templates folder:", TEMPLATES_FOLDER)
     print("📁 Output folder:", OUTPUT_FOLDER)
-    print("🌐 Server running on http://localhost:5000")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Get port from environment variable (for production) or use default 5000
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    print(f"🌐 Server running on http://0.0.0.0:{port}")
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)

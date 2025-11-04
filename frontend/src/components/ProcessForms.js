@@ -13,8 +13,12 @@ const ProcessForms = ({ data }) => {
     setError(null);
     
     try {
+      // Get API URL from environment variable or use relative path
+      const apiUrl = process.env.REACT_APP_API_URL || '';
+      const apiEndpoint = `${apiUrl}/api/process-forms`;
+      
       // Send data to backend
-      const response = await axios.post('/api/process-forms', data, {
+      const response = await axios.post(apiEndpoint, data, {
         headers: {
           'Content-Type': 'application/json',
         },
@@ -34,8 +38,10 @@ const ProcessForms = ({ data }) => {
   };
 
   const downloadFile = (filename) => {
-    // Use the full backend URL for downloads
-    window.open(`http://localhost:5000/api/download/${encodeURIComponent(filename)}`, '_blank');
+    // Get API URL from environment variable or use relative path
+    const apiUrl = process.env.REACT_APP_API_URL || '';
+    const downloadUrl = `${apiUrl}/api/download/${encodeURIComponent(filename)}`;
+    window.open(downloadUrl, '_blank');
   };
 
   return (
