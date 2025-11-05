@@ -24,26 +24,52 @@ const ProcessForms = ({ data }) => {
         },
       });
 
-      if (response.data.success) {
+      // Handle Vercel serverless function response format
+      let responseData = response.data;
+      
+      // If response body is a string (Vercel Python format), parse it
+      if (typeof responseData === 'string') {
+        try {
+          responseData = JSON.parse(responseData);
+        } catch (e) {
+          console.error('Failed to parse response:', e);
+        }
+      }
+      
+      // Check if success is in response or response body
+      const success = responseData.success || responseData.body?.success;
+      const downloadLinksData = responseData.downloadLinks || responseData.body?.downloadLinks || [];
+      const filesData = responseData.files || responseData.body?.files;
+      
+      if (success) {
         setIsCompleted(true);
         
         // Store files data if returned as base64 (for Vercel serverless)
-        const links = response.data.downloadLinks || [];
-        if (response.data.files) {
+        const links = downloadLinksData || [];
+        if (filesData) {
           // Attach file data to each link
           const linksWithFiles = links.map(link => ({
             ...link,
-            fileData: response.data.files[link.filename]
+            fileData: filesData[link.filename]
           }));
           setDownloadLinks(linksWithFiles);
         } else {
           setDownloadLinks(links);
         }
       } else {
-        setError(response.data.error || 'Failed to process forms');
+        const errorMsg = responseData.error || 
+                        responseData.body?.error || 
+                        'Failed to process forms';
+        setError(errorMsg);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred while processing forms');
+      console.error('Error processing forms:', err);
+      console.error('Error response:', err.response);
+      const errorMessage = err.response?.data?.error || 
+                          err.response?.data?.body?.error || 
+                          err.message || 
+                          'An error occurred while processing forms';
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -151,7 +177,7 @@ const ProcessForms = ({ data }) => {
             <h3 className="text-lg font-medium text-gray-900 mb-4">Download Filled Forms</h3>
             
             {/* DOCX Files */}
-            {downloadLinks.length > 0 && (
+            {downloadLinks.length > 0 ? (
               <div className="mb-6">
                 <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center">
                   <FileText className="h-4 w-4 text-blue-600 mr-2" />
@@ -181,6 +207,12 @@ const ProcessForms = ({ data }) => {
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ No files were generated. Please check the console for errors or try again.
+                </p>
               </div>
             )}
 
