@@ -234,6 +234,14 @@ def process_forms():
             download_links = []
             files_data = {}
             
+            # Ensure OUTPUT_FOLDER exists and is writable (for local storage)
+            try:
+                os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
+                if not os.access(str(OUTPUT_FOLDER), os.W_OK):
+                    print(f"⚠️  OUTPUT_FOLDER is not writable: {OUTPUT_FOLDER}")
+            except Exception as e:
+                print(f"⚠️  Could not create/access OUTPUT_FOLDER: {e}")
+            
             for filename in os.listdir(output_dir):
                 if filename.endswith('.docx'):
                     source_path = os.path.join(output_dir, filename)
@@ -245,14 +253,29 @@ def process_forms():
                         files_data[filename] = file_base64
                     
                     # Also copy to OUTPUT_FOLDER for local storage (works locally, may fail on Railway)
+                    dest_path = str(OUTPUT_FOLDER / filename)
                     try:
-                        dest_path = str(OUTPUT_FOLDER / filename)
-                        shutil.copy2(source_path, dest_path)
-                        print(f"✅ Saved file locally: {dest_path}")
+                        # Ensure we're copying from the temp directory before it's cleaned up
+                        if os.path.exists(source_path):
+                            shutil.copy2(source_path, dest_path)
+                            if os.path.exists(dest_path):
+                                file_size = os.path.getsize(dest_path)
+                                print(f"✅ Saved file locally: {dest_path} ({file_size:,} bytes)")
+                            else:
+                                print(f"⚠️  File copy appeared to succeed but file not found at: {dest_path}")
+                        else:
+                            print(f"⚠️  Source file not found: {source_path}")
+                    except PermissionError as e:
+                        print(f"⚠️  Permission denied saving to OUTPUT_FOLDER: {e}")
+                        print(f"   OUTPUT_FOLDER: {OUTPUT_FOLDER}")
+                        print(f"   Check directory permissions")
                     except Exception as e:
                         # If copying fails (e.g., read-only filesystem on Railway), that's okay
                         # We'll use base64 data instead for downloads
-                        print(f"⚠️  Could not save to OUTPUT_FOLDER (this is normal on Railway): {e}")
+                        print(f"⚠️  Could not save to OUTPUT_FOLDER: {type(e).__name__}: {e}")
+                        print(f"   OUTPUT_FOLDER: {OUTPUT_FOLDER}")
+                        print(f"   Source: {source_path}")
+                        print(f"   Dest: {dest_path}")
                         # Note: Downloads still work via base64 data in the API response
                     
                     output_files.append(filename)
@@ -336,9 +359,22 @@ if __name__ == '__main__':
     print("📁 Lib folder:", str(LIB_FOLDER))
     print("📁 Base directory:", str(BASE_DIR))
     
+    # Verify OUTPUT_FOLDER exists and is writable
+    try:
+        os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
+        if os.access(str(OUTPUT_FOLDER), os.W_OK):
+            print(f"✅ OUTPUT_FOLDER is writable: {OUTPUT_FOLDER}")
+        else:
+            print(f"⚠️  OUTPUT_FOLDER exists but is NOT writable: {OUTPUT_FOLDER}")
+    except Exception as e:
+        print(f"⚠️  Could not create/verify OUTPUT_FOLDER: {e}")
+    
     # Get port from environment variable (for production) or use default 5000
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
     print(f"🌐 Server running on http://0.0.0.0:{port}")
+    # Enable Flask logging to see print statements
+    import logging
+    logging.basicConfig(level=logging.INFO)
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
