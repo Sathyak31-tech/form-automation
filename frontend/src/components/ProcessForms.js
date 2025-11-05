@@ -65,10 +65,32 @@ const ProcessForms = ({ data }) => {
     } catch (err) {
       console.error('Error processing forms:', err);
       console.error('Error response:', err.response);
-      const errorMessage = err.response?.data?.error || 
-                          err.response?.data?.body?.error || 
-                          err.message || 
-                          'An error occurred while processing forms';
+      
+      // Extract error message safely
+      let errorMessage = 'An error occurred while processing forms';
+      
+      if (err.response?.data) {
+        const data = err.response.data;
+        // Handle different error response formats
+        if (typeof data === 'string') {
+          try {
+            const parsed = JSON.parse(data);
+            errorMessage = parsed.error || parsed.message || errorMessage;
+          } catch (e) {
+            errorMessage = data;
+          }
+        } else if (data.error) {
+          errorMessage = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+        } else if (data.body) {
+          const body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+          errorMessage = body.error || body.message || errorMessage;
+        } else if (data.message) {
+          errorMessage = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setError(errorMessage);
     } finally {
       setIsProcessing(false);
@@ -148,7 +170,9 @@ const ProcessForms = ({ data }) => {
             <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
             <h3 className="text-sm font-medium text-red-800">Error Processing Forms</h3>
           </div>
-          <p className="mt-2 text-sm text-red-700">{error}</p>
+          <p className="mt-2 text-sm text-red-700">
+            {typeof error === 'string' ? error : JSON.stringify(error)}
+          </p>
           <button
             onClick={() => {
               setError(null);
