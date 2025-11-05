@@ -120,6 +120,11 @@ const ProcessForms = ({ data }) => {
           status = err.response.status || 500;
           const data = err.response.data;
           
+          // Check if data is null/undefined (server might not return body)
+          if (!data) {
+            errorMessage = `Server error (${status}): No error details available`;
+          }
+          
           // Handle string response
           if (typeof data === 'string') {
             try {
@@ -191,10 +196,21 @@ const ProcessForms = ({ data }) => {
             } else {
               errorMessage = `Server error (${status}): ${JSON.stringify(data).substring(0, 200)}`;
             }
+          } else if (!data) {
+            errorMessage = `Server error (${status}): No error details available`;
           } else {
             errorMessage = `Server error (${status}): No error details available`;
           }
+        } else if (err.response) {
+          // Response exists but no data property
+          status = err.response.status || 500;
+          errorMessage = `Server error (${status}): ${err.response.statusText || 'Internal Server Error'}`;
         } 
+        // Handle cases where response exists but no data
+        else if (err.response) {
+          status = err.response.status || 500;
+          errorMessage = `Server error (${status}): ${err.response.statusText || 'Internal Server Error'}`;
+        }
         // Handle network errors or other axios errors
         else if (err.message) {
           errorMessage = typeof err.message === 'string' ? err.message : String(err.message);
@@ -203,9 +219,13 @@ const ProcessForms = ({ data }) => {
         else if (err.code && err.message) {
           errorMessage = `Error ${err.code}: ${String(err.message)}`;
         }
+        // Handle status code from error object
+        else if (err.status) {
+          errorMessage = `Server error (${err.status}): Request failed`;
+        }
         // Fallback: stringify the entire error
         else {
-          errorMessage = JSON.stringify(err).substring(0, 500);
+          errorMessage = `Request failed: ${err.code || 'Unknown error'}`;
         }
       } catch (e) {
         // Ultimate fallback
