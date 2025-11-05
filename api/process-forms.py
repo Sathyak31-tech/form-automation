@@ -8,10 +8,29 @@ import tempfile
 import shutil
 from pathlib import Path
 
-# Import populator
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from populator import SmartFormPopulator
+        # Import populator - try multiple paths
+        import sys
+        lib_path = os.path.join(os.path.dirname(__file__), '..', 'lib')
+        sys.path.insert(0, lib_path)
+        
+        # Also try absolute path
+        api_dir = Path(__file__).parent
+        root_dir = api_dir.parent
+        lib_abs_path = str(root_dir / 'lib')
+        if lib_abs_path not in sys.path:
+            sys.path.insert(0, lib_abs_path)
+        
+        print(f"Attempting to import populator from: {lib_path}")
+        print(f"Lib path exists: {os.path.exists(lib_path)}")
+        print(f"Lib populator exists: {os.path.exists(os.path.join(lib_path, 'populator.py'))}")
+        
+        try:
+            from populator import SmartFormPopulator
+            print("✅ Successfully imported SmartFormPopulator")
+        except ImportError as import_err:
+            print(f"❌ Import error: {import_err}")
+            print(f"Available files in lib: {os.listdir(lib_path) if os.path.exists(lib_path) else 'Path does not exist'}")
+            raise
 
 def handler(req):
     """Process form data and generate filled documents - Vercel serverless function"""
@@ -26,6 +45,16 @@ def handler(req):
             },
             'body': ''
         }
+    
+    # Diagnostic logging
+    try:
+        import sys
+        print(f"Python version: {sys.version}")
+        print(f"Python path: {sys.path}")
+        print(f"Current directory: {os.getcwd()}")
+        print(f"API file location: {__file__}")
+    except Exception as diag_err:
+        print(f"Diagnostic error: {diag_err}")
     
     try:
         # Parse request body - Vercel format
@@ -52,18 +81,42 @@ def handler(req):
         root_dir = api_dir.parent
         templates_dir = root_dir / 'templates'
         
+        print(f"Looking for templates at: {templates_dir}")
+        print(f"Templates directory exists: {templates_dir.exists()}")
+        print(f"Root directory: {root_dir}")
+        print(f"Root exists: {root_dir.exists()}")
+        
         if not templates_dir.exists():
-            return {
-                'statusCode': 500,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                },
-                'body': json.dumps({
-                    'success': False,
-                    'error': 'Templates directory not found'
-                })
-            }
+            # Try alternative paths
+            alt_paths = [
+                root_dir / 'templates',
+                Path('/var/task/templates'),  # Vercel lambda path
+                Path('/vercel/templates'),
+                Path('./templates'),
+            ]
+            found = False
+            for alt_path in alt_paths:
+                if alt_path.exists():
+                    templates_dir = alt_path
+                    found = True
+                    print(f"Found templates at alternative path: {alt_path}")
+                    break
+            
+            if not found:
+                error_msg = f'Templates directory not found. Searched: {templates_dir}'
+                print(f"❌ {error_msg}")
+                return {
+                    'statusCode': 500,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                    },
+                    'body': json.dumps({
+                        'success': False,
+                        'error': error_msg,
+                        'searched_paths': [str(p) for p in alt_paths]
+                    })
+                }
         
         # Create temporary directory for this session
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -242,10 +295,11 @@ def handler(req):
                 })
             }
             
-    except Exception as e:
+    except ImportError as import_err:
         import traceback
         error_details = traceback.format_exc()
-        print(f"❌ Error in process_forms: {str(e)}")
+        error_msg = f'Import error: {str(import_err)}'
+        print(f"❌ {error_msg}")
         print(f"❌ Full traceback: {error_details}")
         return {
             'statusCode': 500,
@@ -255,8 +309,29 @@ def handler(req):
             },
             'body': json.dumps({
                 'success': False,
-                'error': f'Form processing failed: {str(e)}',
-                'details': error_details
+                'error': error_msg,
+                'type': 'ImportError',
+                'details': error_details[:500] if len(error_details) > 500 else error_details
+            })
+        }
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        error_msg = f'Form processing failed: {str(e)}'
+        print(f"❌ {error_msg}")
+        print(f"❌ Error type: {type(e).__name__}")
+        print(f"❌ Full traceback: {error_details}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+            'body': json.dumps({
+                'success': False,
+                'error': error_msg,
+                'type': type(e).__name__,
+                'details': error_details[:1000] if len(error_details) > 1000 else error_details
             })
         }
 
