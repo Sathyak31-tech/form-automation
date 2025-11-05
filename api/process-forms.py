@@ -14,19 +14,12 @@ from pathlib import Path
 SmartFormPopulator = None
 _import_error = None
 
-# Test that basic imports work at module level
-try:
-    # These should always work
-    pass
-except Exception as e:
-    print(f"CRITICAL: Module-level import failed: {e}")
-
 def handler(req):
     """Process form data and generate filled documents - Vercel serverless function"""
     # CRITICAL: Wrap everything in try-except to catch ANY error
     try:
         # Handle CORS preflight
-        if req.get('method') == 'OPTIONS':
+        if req and req.get('method') == 'OPTIONS':
             return {
                 'statusCode': 200,
                 'headers': {
@@ -40,9 +33,8 @@ def handler(req):
         # Diagnostic logging
         try:
             print(f"Python version: {sys.version}")
-            print(f"Python path: {sys.path}")
+            print(f"Python path: {sys.path[:3]}")  # First 3 paths only
             print(f"Current directory: {os.getcwd()}")
-            print(f"API file location: {__file__}")
         except Exception as diag_err:
             print(f"Diagnostic error: {diag_err}")
     except Exception as top_level_err:
