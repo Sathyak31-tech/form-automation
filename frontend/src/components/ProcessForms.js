@@ -97,63 +97,110 @@ const ProcessForms = ({ data }) => {
     } catch (err) {
       console.error('Error processing forms:', err);
       console.error('Error response:', err.response);
+      console.error('Error object:', JSON.stringify(err, null, 2));
       
       // Extract error message safely - MUST be a string
       let errorMessage = 'An error occurred while processing forms';
       
       try {
-        if (err.response?.data) {
+        // Handle axios error response
+        if (err.response) {
+          const status = err.response.status || 500;
           const data = err.response.data;
           
           // Handle string response
           if (typeof data === 'string') {
             try {
               const parsed = JSON.parse(data);
-              errorMessage = parsed.error || parsed.message || errorMessage;
-              if (typeof errorMessage !== 'string') {
-                errorMessage = JSON.stringify(errorMessage);
+              if (parsed.error) {
+                errorMessage = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
+              } else if (parsed.message) {
+                errorMessage = typeof parsed.message === 'string' ? parsed.message : JSON.stringify(parsed.message);
+              } else {
+                errorMessage = `Server error (${status}): ${data.substring(0, 100)}`;
               }
             } catch (e) {
-              errorMessage = data;
+              errorMessage = `Server error (${status}): ${data.substring(0, 200)}`;
             }
           } 
           // Handle object response
-          else if (typeof data === 'object') {
-            // Check for error object with code/message
-            if (data.code && data.message) {
-              errorMessage = `Error ${data.code}: ${data.message}`;
-            } else if (data.error) {
-              errorMessage = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-            } else if (data.body) {
-              const body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
-              if (body.code && body.message) {
-                errorMessage = `Error ${body.code}: ${body.message}`;
-              } else {
-                errorMessage = body.error || body.message || errorMessage;
+          else if (data && typeof data === 'object') {
+            // Handle Vercel serverless function error format
+            if (data.body) {
+              let body = data.body;
+              if (typeof body === 'string') {
+                try {
+                  body = JSON.parse(body);
+                } catch (e) {
+                  // If parsing fails, use the string
+                  errorMessage = `Server error (${status}): ${body.substring(0, 200)}`;
+                  data = null; // Skip further processing
+                }
               }
-              if (typeof errorMessage !== 'string') {
-                errorMessage = JSON.stringify(errorMessage);
+              if (data && body) {
+                if (body.code && body.message) {
+                  errorMessage = `Error ${body.code}: ${String(body.message)}`;
+                } else if (body.error) {
+                  errorMessage = typeof body.error === 'string' ? body.error : JSON.stringify(body.error);
+                } else if (body.message) {
+                  errorMessage = typeof body.message === 'string' ? body.message : JSON.stringify(body.message);
+                } else if (body.details) {
+                  errorMessage = typeof body.details === 'string' ? body.details : JSON.stringify(body.details);
+                }
+              }
+            }
+            // Direct error object
+            else if (data.code && data.message) {
+              errorMessage = `Error ${data.code}: ${String(data.message)}`;
+            } else if (data.error) {
+              const errorData = data.error;
+              if (typeof errorData === 'string') {
+                errorMessage = errorData;
+              } else if (errorData && typeof errorData === 'object') {
+                if (errorData.code && errorData.message) {
+                  errorMessage = `Error ${errorData.code}: ${String(errorData.message)}`;
+                } else {
+                  errorMessage = JSON.stringify(errorData);
+                }
+              } else {
+                errorMessage = JSON.stringify(errorData);
               }
             } else if (data.message) {
               errorMessage = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
             } else {
-              // If it's just an object, stringify it
-              errorMessage = JSON.stringify(data);
+              errorMessage = `Server error (${status}): ${JSON.stringify(data).substring(0, 200)}`;
             }
+          } else {
+            errorMessage = `Server error (${status}): No error details available`;
           }
-        } else if (err.message) {
-          errorMessage = typeof err.message === 'string' ? err.message : JSON.stringify(err.message);
-        } else if (err.code) {
-          errorMessage = `Error ${err.code}: ${err.message || 'Unknown error'}`;
+        } 
+        // Handle network errors or other axios errors
+        else if (err.message) {
+          errorMessage = typeof err.message === 'string' ? err.message : String(err.message);
+        } 
+        // Handle error objects with code/message
+        else if (err.code && err.message) {
+          errorMessage = `Error ${err.code}: ${String(err.message)}`;
+        }
+        // Fallback: stringify the entire error
+        else {
+          errorMessage = JSON.stringify(err).substring(0, 500);
         }
       } catch (e) {
-        // Fallback to safe error message
-        errorMessage = 'An error occurred while processing forms. Please check the console for details.';
+        // Ultimate fallback
+        console.error('Error in error handler:', e);
+        errorMessage = `An error occurred: ${status ? `HTTP ${status}` : 'Network error'}. Please check the console for details.`;
       }
       
-      // Ensure errorMessage is always a string
+      // CRITICAL: Ensure errorMessage is ALWAYS a string before setting state
       if (typeof errorMessage !== 'string') {
-        errorMessage = JSON.stringify(errorMessage);
+        console.warn('Error message is not a string, converting:', errorMessage);
+        errorMessage = String(errorMessage);
+      }
+      
+      // Final safety check
+      if (!errorMessage || errorMessage === 'null' || errorMessage === 'undefined') {
+        errorMessage = 'An unknown error occurred. Please check the browser console for details.';
       }
       
       setError(errorMessage);
@@ -236,7 +283,21 @@ const ProcessForms = ({ data }) => {
             <h3 className="text-sm font-medium text-red-800">Error Processing Forms</h3>
           </div>
           <p className="mt-2 text-sm text-red-700">
-            {typeof error === 'string' ? error : JSON.stringify(error)}
+            {(() => {
+              // Ensure error is always a string before rendering
+              if (typeof error === 'string') {
+                return error;
+              } else if (error && typeof error === 'object') {
+                // Handle error objects
+                if (error.code && error.message) {
+                  return `Error ${error.code}: ${String(error.message)}`;
+                } else {
+                  return JSON.stringify(error);
+                }
+              } else {
+                return String(error || 'Unknown error');
+              }
+            })()}
           </p>
           <button
             onClick={() => {
