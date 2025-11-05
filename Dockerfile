@@ -21,5 +21,6 @@ ENV FLASK_APP=backend/server.py
 EXPOSE 5000
 
 # Run the application
-CMD ["python", "backend/server.py"]
+# Railway sets PORT environment variable automatically
+CMD python backend/server.py
 
