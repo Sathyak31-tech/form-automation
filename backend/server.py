@@ -265,6 +265,19 @@ def download_file(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/')
+def root():
+    """Root endpoint"""
+    return jsonify({
+        'status': 'ok',
+        'message': 'Form Automation Backend API',
+        'endpoints': {
+            'health': '/api/health',
+            'process_forms': '/api/process-forms',
+            'download': '/api/download/<filename>'
+        }
+    })
+
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""
