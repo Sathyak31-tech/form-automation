@@ -205,11 +205,6 @@ const ProcessForms = ({ data }) => {
           // Response exists but no data property
           status = err.response.status || 500;
           errorMessage = `Server error (${status}): ${err.response.statusText || 'Internal Server Error'}`;
-        } 
-        // Handle cases where response exists but no data
-        else if (err.response) {
-          status = err.response.status || 500;
-          errorMessage = `Server error (${status}): ${err.response.statusText || 'Internal Server Error'}`;
         }
         // Handle network errors or other axios errors
         else if (err.message) {
