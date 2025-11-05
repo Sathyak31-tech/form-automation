@@ -76,15 +76,24 @@ const ProcessForms = ({ data }) => {
         // Extract error message and ensure it's a string
         let errorMsg = responseData.error || 
                        responseData.body?.error || 
+                       responseData.message ||
+                       responseData.body?.message ||
                        'Failed to process forms';
         
-        // Handle error object with code/message
+        // Handle error object with code/message (Vercel format)
         if (typeof errorMsg === 'object') {
           if (errorMsg.code && errorMsg.message) {
-            errorMsg = `Error ${errorMsg.code}: ${errorMsg.message}`;
+            errorMsg = `Error ${errorMsg.code}: ${String(errorMsg.message)}`;
+          } else if (errorMsg.code) {
+            errorMsg = `Error ${errorMsg.code}`;
           } else {
             errorMsg = JSON.stringify(errorMsg);
           }
+        }
+        
+        // Handle nested error structure
+        if (responseData.code && responseData.message) {
+          errorMsg = `Error ${responseData.code}: ${String(responseData.message)}`;
         }
         
         // Ensure it's a string
@@ -92,7 +101,9 @@ const ProcessForms = ({ data }) => {
           errorMsg = String(errorMsg);
         }
         
-        setError(errorMsg);
+        // Final safety check
+        const finalErrorMsg = typeof errorMsg === 'string' && errorMsg.trim() ? errorMsg : 'Failed to process forms';
+        setError(finalErrorMsg);
       }
     } catch (err) {
       console.error('Error processing forms:', err);
@@ -150,10 +161,15 @@ const ProcessForms = ({ data }) => {
                 }
               }
             }
-            // Direct error object
+            // Direct error object (Vercel format: {code: "500", message: "..."})
             else if (data.code && data.message) {
               errorMessage = `Error ${data.code}: ${String(data.message)}`;
-            } else if (data.error) {
+            } 
+            // Handle Vercel error wrapper
+            else if (data.error && typeof data.error === 'object' && data.error.code && data.error.message) {
+              errorMessage = `Error ${data.error.code}: ${String(data.error.message)}`;
+            } 
+            else if (data.error) {
               const errorData = data.error;
               if (typeof errorData === 'string') {
                 errorMessage = errorData;
@@ -196,15 +212,29 @@ const ProcessForms = ({ data }) => {
       // CRITICAL: Ensure errorMessage is ALWAYS a string before setting state
       if (typeof errorMessage !== 'string') {
         console.warn('Error message is not a string, converting:', errorMessage);
-        errorMessage = String(errorMessage);
+        try {
+          if (errorMessage && typeof errorMessage === 'object') {
+            if (errorMessage.code && errorMessage.message) {
+              errorMessage = `Error ${errorMessage.code}: ${String(errorMessage.message)}`;
+            } else {
+              errorMessage = JSON.stringify(errorMessage);
+            }
+          } else {
+            errorMessage = String(errorMessage);
+          }
+        } catch (e) {
+          errorMessage = 'An unknown error occurred. Please check the browser console for details.';
+        }
       }
       
-      // Final safety check
-      if (!errorMessage || errorMessage === 'null' || errorMessage === 'undefined') {
+      // Final safety check - ensure it's a valid string
+      if (!errorMessage || errorMessage === 'null' || errorMessage === 'undefined' || errorMessage.trim() === '') {
         errorMessage = 'An unknown error occurred. Please check the browser console for details.';
       }
       
-      setError(errorMessage);
+      // DOUBLE CHECK: Force string conversion one more time
+      const finalError = typeof errorMessage === 'string' ? errorMessage : String(errorMessage);
+      setError(finalError);
     } finally {
       setIsProcessing(false);
     }

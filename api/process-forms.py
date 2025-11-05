@@ -344,18 +344,22 @@ def handler(req):
         error_msg = f'Import error: {str(import_err)}'
         print(f"❌ {error_msg}")
         print(f"❌ Full traceback: {error_details}")
+        # Return error in a format that's easy for frontend to parse
+        error_response = {
+            'success': False,
+            'error': error_msg,
+            'type': 'ImportError',
+            'message': error_msg,  # Add message field for Vercel format compatibility
+            'code': 500,
+            'details': error_details[:500] if len(error_details) > 500 else error_details
+        }
         return {
             'statusCode': 500,
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
             },
-            'body': json.dumps({
-                'success': False,
-                'error': error_msg,
-                'type': 'ImportError',
-                'details': error_details[:500] if len(error_details) > 500 else error_details
-            })
+            'body': json.dumps(error_response)
         }
     except Exception as e:
         import traceback
@@ -364,18 +368,22 @@ def handler(req):
         print(f"❌ {error_msg}")
         print(f"❌ Error type: {type(e).__name__}")
         print(f"❌ Full traceback: {error_details}")
+        # Return error in a format that's easy for frontend to parse
+        error_response = {
+            'success': False,
+            'error': error_msg,
+            'type': type(e).__name__,
+            'message': error_msg,  # Add message field for Vercel format compatibility
+            'code': 500,
+            'details': error_details[:1000] if len(error_details) > 1000 else error_details
+        }
         return {
             'statusCode': 500,
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
             },
-            'body': json.dumps({
-                'success': False,
-                'error': error_msg,
-                'type': type(e).__name__,
-                'details': error_details[:1000] if len(error_details) > 1000 else error_details
-            })
+            'body': json.dumps(error_response)
         }
 
 # Export handler for Vercel (if needed)
