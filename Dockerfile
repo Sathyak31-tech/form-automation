@@ -8,7 +8,7 @@ WORKDIR /app
 COPY backend/requirements.txt /app/backend/requirements.txt
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 # Copy the entire project
 COPY . /app/
@@ -16,11 +16,11 @@ COPY . /app/
 # Set environment variables
 ENV PYTHONPATH=/app/lib:/app/backend
 ENV FLASK_APP=backend/server.py
+ENV PORT=5000
 
 # Expose port (Railway will set PORT env variable)
 EXPOSE 5000
 
-# Run the application
-# Railway sets PORT environment variable automatically
-CMD python backend/server.py
+# Run the application - use absolute path
+CMD ["python", "/app/backend/server.py"]
 
