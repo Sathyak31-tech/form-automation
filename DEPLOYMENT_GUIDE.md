@@ -7,6 +7,8 @@ This guide will help you deploy the frontend on Vercel and the backend on Railwa
 - **Frontend**: Deploy on Vercel (React app)
 - **Backend**: Deploy on Railway (Python Flask app)
 
+✅ **Backend is already configured for Railway!** All paths are fixed and ready.
+
 ---
 
 ## Part 1: Deploy Backend on Railway
@@ -23,22 +25,17 @@ This guide will help you deploy the frontend on Vercel and the backend on Railwa
 4. Railway will auto-detect Python
 
 ### Step 3: Configure Backend Service
-1. Railway will create a service automatically
+1. Railway will auto-detect Python and create a service
 2. Click on the service
 3. Go to "Settings" tab
-4. Set these configurations:
+4. Railway will automatically:
+   - Detect `railway.json` configuration
+   - Install dependencies from `backend/requirements.txt`
+   - Run `cd backend && python server.py`
 
-**Root Directory**: Leave empty (or set to `backend` if you want)
-
-**Build Command**: 
-```bash
-pip install -r backend/requirements.txt
-```
-
-**Start Command**:
-```bash
-cd backend && python server.py
-```
+**No manual configuration needed!** Railway will use:
+- `railway.json` for build/start commands
+- `Procfile` as backup (if needed)
 
 **Environment Variables** (if needed):
 - `FLASK_ENV=production`
