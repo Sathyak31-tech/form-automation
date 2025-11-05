@@ -244,14 +244,16 @@ def process_forms():
                         file_base64 = base64.b64encode(file_bytes).decode('utf-8')
                         files_data[filename] = file_base64
                     
-                    # Also copy to OUTPUT_FOLDER for backward compatibility (if it persists)
+                    # Also copy to OUTPUT_FOLDER for local storage (works locally, may fail on Railway)
                     try:
                         dest_path = str(OUTPUT_FOLDER / filename)
                         shutil.copy2(source_path, dest_path)
+                        print(f"✅ Saved file locally: {dest_path}")
                     except Exception as e:
-                        # If copying fails (e.g., read-only filesystem), that's okay
-                        # We'll use base64 data instead
-                        print(f"⚠️  Could not copy to OUTPUT_FOLDER: {e}")
+                        # If copying fails (e.g., read-only filesystem on Railway), that's okay
+                        # We'll use base64 data instead for downloads
+                        print(f"⚠️  Could not save to OUTPUT_FOLDER (this is normal on Railway): {e}")
+                        # Note: Downloads still work via base64 data in the API response
                     
                     output_files.append(filename)
                     
