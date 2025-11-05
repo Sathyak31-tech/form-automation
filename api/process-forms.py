@@ -6,31 +6,27 @@ import json
 import base64
 import tempfile
 import shutil
+import sys
 from pathlib import Path
 
-        # Import populator - try multiple paths
-        import sys
-        lib_path = os.path.join(os.path.dirname(__file__), '..', 'lib')
-        sys.path.insert(0, lib_path)
-        
-        # Also try absolute path
-        api_dir = Path(__file__).parent
-        root_dir = api_dir.parent
-        lib_abs_path = str(root_dir / 'lib')
-        if lib_abs_path not in sys.path:
-            sys.path.insert(0, lib_abs_path)
-        
-        print(f"Attempting to import populator from: {lib_path}")
-        print(f"Lib path exists: {os.path.exists(lib_path)}")
-        print(f"Lib populator exists: {os.path.exists(os.path.join(lib_path, 'populator.py'))}")
-        
-        try:
-            from populator import SmartFormPopulator
-            print("✅ Successfully imported SmartFormPopulator")
-        except ImportError as import_err:
-            print(f"❌ Import error: {import_err}")
-            print(f"Available files in lib: {os.listdir(lib_path) if os.path.exists(lib_path) else 'Path does not exist'}")
-            raise
+# Import populator - try multiple paths
+lib_path = os.path.join(os.path.dirname(__file__), '..', 'lib')
+sys.path.insert(0, lib_path)
+
+# Also try absolute path
+api_dir = Path(__file__).parent
+root_dir = api_dir.parent
+lib_abs_path = str(root_dir / 'lib')
+if lib_abs_path not in sys.path:
+    sys.path.insert(0, lib_abs_path)
+
+# Import with error handling
+try:
+    from populator import SmartFormPopulator
+except ImportError as import_err:
+    # Will be handled in handler function
+    SmartFormPopulator = None
+    _import_error = import_err
 
 def handler(req):
     """Process form data and generate filled documents - Vercel serverless function"""
@@ -48,13 +44,31 @@ def handler(req):
     
     # Diagnostic logging
     try:
-        import sys
         print(f"Python version: {sys.version}")
         print(f"Python path: {sys.path}")
         print(f"Current directory: {os.getcwd()}")
         print(f"API file location: {__file__}")
     except Exception as diag_err:
         print(f"Diagnostic error: {diag_err}")
+    
+    # Check if import failed at module level
+    if SmartFormPopulator is None:
+        error_msg = f'Failed to import SmartFormPopulator: {_import_error}'
+        print(f"❌ {error_msg}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+            'body': json.dumps({
+                'success': False,
+                'error': error_msg,
+                'type': 'ImportError',
+                'lib_path': lib_path,
+                'lib_exists': os.path.exists(lib_path)
+            })
+        }
     
     try:
         # Parse request body - Vercel format
