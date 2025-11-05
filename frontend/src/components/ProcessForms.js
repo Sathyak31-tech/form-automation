@@ -57,38 +57,87 @@ const ProcessForms = ({ data }) => {
           setDownloadLinks(links);
         }
       } else {
-        const errorMsg = responseData.error || 
-                        responseData.body?.error || 
-                        'Failed to process forms';
+        // Extract error message and ensure it's a string
+        let errorMsg = responseData.error || 
+                       responseData.body?.error || 
+                       'Failed to process forms';
+        
+        // Handle error object with code/message
+        if (typeof errorMsg === 'object') {
+          if (errorMsg.code && errorMsg.message) {
+            errorMsg = `Error ${errorMsg.code}: ${errorMsg.message}`;
+          } else {
+            errorMsg = JSON.stringify(errorMsg);
+          }
+        }
+        
+        // Ensure it's a string
+        if (typeof errorMsg !== 'string') {
+          errorMsg = String(errorMsg);
+        }
+        
         setError(errorMsg);
       }
     } catch (err) {
       console.error('Error processing forms:', err);
       console.error('Error response:', err.response);
       
-      // Extract error message safely
+      // Extract error message safely - MUST be a string
       let errorMessage = 'An error occurred while processing forms';
       
-      if (err.response?.data) {
-        const data = err.response.data;
-        // Handle different error response formats
-        if (typeof data === 'string') {
-          try {
-            const parsed = JSON.parse(data);
-            errorMessage = parsed.error || parsed.message || errorMessage;
-          } catch (e) {
-            errorMessage = data;
+      try {
+        if (err.response?.data) {
+          const data = err.response.data;
+          
+          // Handle string response
+          if (typeof data === 'string') {
+            try {
+              const parsed = JSON.parse(data);
+              errorMessage = parsed.error || parsed.message || errorMessage;
+              if (typeof errorMessage !== 'string') {
+                errorMessage = JSON.stringify(errorMessage);
+              }
+            } catch (e) {
+              errorMessage = data;
+            }
+          } 
+          // Handle object response
+          else if (typeof data === 'object') {
+            // Check for error object with code/message
+            if (data.code && data.message) {
+              errorMessage = `Error ${data.code}: ${data.message}`;
+            } else if (data.error) {
+              errorMessage = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+            } else if (data.body) {
+              const body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+              if (body.code && body.message) {
+                errorMessage = `Error ${body.code}: ${body.message}`;
+              } else {
+                errorMessage = body.error || body.message || errorMessage;
+              }
+              if (typeof errorMessage !== 'string') {
+                errorMessage = JSON.stringify(errorMessage);
+              }
+            } else if (data.message) {
+              errorMessage = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+            } else {
+              // If it's just an object, stringify it
+              errorMessage = JSON.stringify(data);
+            }
           }
-        } else if (data.error) {
-          errorMessage = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-        } else if (data.body) {
-          const body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
-          errorMessage = body.error || body.message || errorMessage;
-        } else if (data.message) {
-          errorMessage = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+        } else if (err.message) {
+          errorMessage = typeof err.message === 'string' ? err.message : JSON.stringify(err.message);
+        } else if (err.code) {
+          errorMessage = `Error ${err.code}: ${err.message || 'Unknown error'}`;
         }
-      } else if (err.message) {
-        errorMessage = err.message;
+      } catch (e) {
+        // Fallback to safe error message
+        errorMessage = 'An error occurred while processing forms. Please check the console for details.';
+      }
+      
+      // Ensure errorMessage is always a string
+      if (typeof errorMessage !== 'string') {
+        errorMessage = JSON.stringify(errorMessage);
       }
       
       setError(errorMessage);
