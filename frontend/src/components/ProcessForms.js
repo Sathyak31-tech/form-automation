@@ -14,7 +14,16 @@ const ProcessForms = ({ data }) => {
     
     try {
       // Get API URL from environment variable or use relative path
-      const apiUrl = process.env.REACT_APP_API_URL || '';
+      let apiUrl = process.env.REACT_APP_API_URL || '';
+      
+      // Ensure URL has protocol (https:// or http://)
+      if (apiUrl && !apiUrl.match(/^https?:\/\//)) {
+        apiUrl = `https://${apiUrl}`;
+      }
+      
+      // Remove trailing slash if present
+      apiUrl = apiUrl.replace(/\/$/, '');
+      
       const apiEndpoint = `${apiUrl}/api/process-forms`;
       
       // Send data to backend
