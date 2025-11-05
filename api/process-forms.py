@@ -260,3 +260,6 @@ def handler(req):
             })
         }
 
+# Export handler for Vercel (if needed)
+__all__ = ['handler']
+
