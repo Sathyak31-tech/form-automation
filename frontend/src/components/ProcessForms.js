@@ -33,13 +33,26 @@ const ProcessForms = ({ data }) => {
           responseData = JSON.parse(responseData);
         } catch (e) {
           console.error('Failed to parse response:', e);
+          throw new Error('Invalid response format from server');
         }
       }
       
+      // Handle nested body structure (Vercel serverless functions)
+      if (responseData && typeof responseData === 'object' && responseData.body) {
+        if (typeof responseData.body === 'string') {
+          try {
+            responseData.body = JSON.parse(responseData.body);
+          } catch (e) {
+            console.error('Failed to parse response body:', e);
+          }
+        }
+        responseData = { ...responseData, ...responseData.body };
+      }
+      
       // Check if success is in response or response body
-      const success = responseData.success || responseData.body?.success;
-      const downloadLinksData = responseData.downloadLinks || responseData.body?.downloadLinks || [];
-      const filesData = responseData.files || responseData.body?.files;
+      const success = responseData?.success || false;
+      const downloadLinksData = responseData?.downloadLinks || [];
+      const filesData = responseData?.files || {};
       
       if (success) {
         setIsCompleted(true);
@@ -183,13 +196,12 @@ const ProcessForms = ({ data }) => {
     window.open(downloadUrl, '_blank');
   };
 
-  try {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="flex items-center mb-6">
-          <Download className="h-6 w-6 text-primary-600 mr-3" />
-          <h2 className="text-xl font-semibold text-gray-900">Process Forms</h2>
-        </div>
+  return (
+    <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="flex items-center mb-6">
+        <Download className="h-6 w-6 text-primary-600 mr-3" />
+        <h2 className="text-xl font-semibold text-gray-900">Process Forms</h2>
+      </div>
 
       {!isCompleted && !isProcessing && (
         <div className="text-center py-8">
@@ -310,20 +322,7 @@ const ProcessForms = ({ data }) => {
         </div>
       )}
     </div>
-    );
-  } catch (renderError) {
-    console.error('Error rendering ProcessForms:', renderError);
-    return (
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <h3 className="text-sm font-medium text-red-800">Component Error</h3>
-          <p className="mt-2 text-sm text-red-700">
-            {renderError?.message || 'An error occurred while rendering the component'}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  );
 };
 
 export default ProcessForms;
