@@ -53,6 +53,7 @@ os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
 
 @app.route('/api/process-forms', methods=['POST', 'OPTIONS'])
 def process_forms():
+    """Process the form data and generate filled documents"""
     # Handle CORS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -60,7 +61,7 @@ def process_forms():
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
         return response
-    """Process the form data and generate filled documents"""
+    
     try:
         # Get form data from request
         form_data = request.json
@@ -260,8 +261,15 @@ def process_forms():
             'error': f'Server error: {str(e)}'
         }), 500
 
-@app.route('/api/download/<filename>')
+@app.route('/api/download/<filename>', methods=['GET', 'OPTIONS'])
 def download_file(filename):
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        return response
     """Download a processed form file"""
     try:
         # Try the filename as-is first, then with secure_filename
