@@ -227,18 +227,35 @@ def process_forms():
                     'error': f'Form processing failed: {result.stderr}'
                 }), 500
             
-            # Copy output files to permanent location and generate download links
+            # Read output files and encode as base64 for direct download
+            # This avoids filesystem persistence issues on Railway
+            import base64
             output_files = []
             download_links = []
+            files_data = {}
             
             for filename in os.listdir(output_dir):
                 if filename.endswith('.docx'):
                     source_path = os.path.join(output_dir, filename)
-                    dest_path = str(OUTPUT_FOLDER / filename)
-                    shutil.copy2(source_path, dest_path)
+                    
+                    # Read file and encode as base64
+                    with open(source_path, 'rb') as f:
+                        file_bytes = f.read()
+                        file_base64 = base64.b64encode(file_bytes).decode('utf-8')
+                        files_data[filename] = file_base64
+                    
+                    # Also copy to OUTPUT_FOLDER for backward compatibility (if it persists)
+                    try:
+                        dest_path = str(OUTPUT_FOLDER / filename)
+                        shutil.copy2(source_path, dest_path)
+                    except Exception as e:
+                        # If copying fails (e.g., read-only filesystem), that's okay
+                        # We'll use base64 data instead
+                        print(f"⚠️  Could not copy to OUTPUT_FOLDER: {e}")
+                    
                     output_files.append(filename)
                     
-                    # Add DOCX download link
+                    # Add DOCX download link (with base64 data included)
                     download_links.append({
                         'filename': filename,
                         'url': f'/api/download/{filename}',
@@ -248,7 +265,8 @@ def process_forms():
             return jsonify({
                 'success': True,
                 'message': f'Successfully processed {len(output_files)} forms',
-                'downloadLinks': download_links
+                'downloadLinks': download_links,
+                'files': files_data  # Include base64-encoded file data
             })
             
     except Exception as e:
