@@ -19,9 +19,20 @@ app = Flask(__name__)
 # For production, set ALLOWED_ORIGINS environment variable (comma-separated list)
 allowed_origins = os.environ.get('ALLOWED_ORIGINS', '*').split(',')
 if '*' in allowed_origins:
-    CORS(app)  # Allow all origins
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })  # Allow all origins with explicit methods
 else:
-    CORS(app, origins=allowed_origins)  # Allow specific origins only
+    CORS(app, origins=allowed_origins, resources={
+        r"/api/*": {
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })  # Allow specific origins only
 
 # Configuration - use absolute paths for Railway deployment
 import os
@@ -40,8 +51,15 @@ LIB_FOLDER = BASE_DIR / 'lib'
 os.makedirs(str(UPLOAD_FOLDER), exist_ok=True)
 os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
 
-@app.route('/api/process-forms', methods=['POST'])
+@app.route('/api/process-forms', methods=['POST', 'OPTIONS'])
 def process_forms():
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        return response
     """Process the form data and generate filled documents"""
     try:
         # Get form data from request
