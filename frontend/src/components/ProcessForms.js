@@ -45,13 +45,16 @@ const ProcessForms = ({ data }) => {
         setIsCompleted(true);
         
         // Store files data if returned as base64 (for Vercel serverless)
-        const links = downloadLinksData || [];
-        if (filesData) {
+        const links = Array.isArray(downloadLinksData) ? downloadLinksData : [];
+        if (filesData && typeof filesData === 'object') {
           // Attach file data to each link
-          const linksWithFiles = links.map(link => ({
-            ...link,
-            fileData: filesData[link.filename]
-          }));
+          const linksWithFiles = links.map(link => {
+            if (!link || typeof link !== 'object') return link;
+            return {
+              ...link,
+              fileData: link.filename ? filesData[link.filename] : null
+            };
+          }).filter(Boolean); // Remove any null/undefined entries
           setDownloadLinks(linksWithFiles);
         } else {
           setDownloadLinks(links);
@@ -180,12 +183,13 @@ const ProcessForms = ({ data }) => {
     window.open(downloadUrl, '_blank');
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow-sm border p-6">
-      <div className="flex items-center mb-6">
-        <Download className="h-6 w-6 text-primary-600 mr-3" />
-        <h2 className="text-xl font-semibold text-gray-900">Process Forms</h2>
-      </div>
+  try {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="flex items-center mb-6">
+          <Download className="h-6 w-6 text-primary-600 mr-3" />
+          <h2 className="text-xl font-semibold text-gray-900">Process Forms</h2>
+        </div>
 
       {!isCompleted && !isProcessing && (
         <div className="text-center py-8">
@@ -260,25 +264,28 @@ const ProcessForms = ({ data }) => {
                   📝 Download editable Word documents with all your information filled in.
                 </p>
                 <div className="grid grid-cols-1 gap-3">
-                  {downloadLinks.map((link, index) => (
-                    <div key={index} className="border border-gray-200 rounded-lg p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <FileText className="h-4 w-4 text-blue-500 mr-2" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 truncate">{link.filename}</p>
-                            <p className="text-xs text-gray-500">Editable document</p>
+                  {Array.isArray(downloadLinks) && downloadLinks.length > 0 ? downloadLinks.map((link, index) => {
+                    if (!link || !link.filename) return null;
+                    return (
+                      <div key={index} className="border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <FileText className="h-4 w-4 text-blue-500 mr-2" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-900 truncate">{link.filename || 'Unknown file'}</p>
+                              <p className="text-xs text-gray-500">Editable document</p>
+                            </div>
                           </div>
+                          <button
+                            onClick={() => downloadFile(link.filename, link.fileData)}
+                            className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                          >
+                            Download
+                          </button>
                         </div>
-                        <button
-                          onClick={() => downloadFile(link.filename, link.fileData)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
-                        >
-                          Download
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  }) : null}
                 </div>
               </div>
             ) : (
@@ -303,7 +310,20 @@ const ProcessForms = ({ data }) => {
         </div>
       )}
     </div>
-  );
+    );
+  } catch (renderError) {
+    console.error('Error rendering ProcessForms:', renderError);
+    return (
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <h3 className="text-sm font-medium text-red-800">Component Error</h3>
+          <p className="mt-2 text-sm text-red-700">
+            {renderError?.message || 'An error occurred while rendering the component'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default ProcessForms;
