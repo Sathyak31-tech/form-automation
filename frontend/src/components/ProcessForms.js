@@ -140,16 +140,18 @@ const ProcessForms = ({ data }) => {
             // Handle Vercel serverless function error format
             if (data.body) {
               let body = data.body;
+              let parsedBody = null;
               if (typeof body === 'string') {
                 try {
-                  body = JSON.parse(body);
+                  parsedBody = JSON.parse(body);
+                  body = parsedBody;
                 } catch (e) {
                   // If parsing fails, use the string
                   errorMessage = `Server error (${status}): ${body.substring(0, 200)}`;
-                  data = null; // Skip further processing
+                  body = null; // Skip further processing
                 }
               }
-              if (data && body) {
+              if (body && parsedBody !== null) {
                 if (body.code && body.message) {
                   errorMessage = `Error ${body.code}: ${String(body.message)}`;
                 } else if (body.error) {
@@ -159,6 +161,9 @@ const ProcessForms = ({ data }) => {
                 } else if (body.details) {
                   errorMessage = typeof body.details === 'string' ? body.details : JSON.stringify(body.details);
                 }
+              } else if (body && typeof body === 'string') {
+                // Use the string body directly if parsing failed
+                errorMessage = `Server error (${status}): ${body.substring(0, 200)}`;
               }
             }
             // Direct error object (Vercel format: {code: "500", message: "..."})
