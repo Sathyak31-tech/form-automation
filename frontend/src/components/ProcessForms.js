@@ -127,17 +127,22 @@ const ProcessForms = ({ data }) => {
           
           // Handle string response
           if (typeof data === 'string') {
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.error) {
-                errorMessage = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
-              } else if (parsed.message) {
-                errorMessage = typeof parsed.message === 'string' ? parsed.message : JSON.stringify(parsed.message);
-              } else {
-                errorMessage = `Server error (${status}): ${data.substring(0, 100)}`;
+            // Check for Vercel's generic error message
+            if (data.includes('A server error has occurred') || data.includes('FUNCTION_INVOCATION_FAILED')) {
+              errorMessage = `Server error (${status}): The Python function crashed. This usually means there's an import error or missing dependency. Check Vercel function logs for details.`;
+            } else {
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.error) {
+                  errorMessage = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
+                } else if (parsed.message) {
+                  errorMessage = typeof parsed.message === 'string' ? parsed.message : JSON.stringify(parsed.message);
+                } else {
+                  errorMessage = `Server error (${status}): ${data.substring(0, 100)}`;
+                }
+              } catch (e) {
+                errorMessage = `Server error (${status}): ${data.substring(0, 200)}`;
               }
-            } catch (e) {
-              errorMessage = `Server error (${status}): ${data.substring(0, 200)}`;
             }
           } 
           // Handle object response
@@ -208,11 +213,14 @@ const ProcessForms = ({ data }) => {
         }
         // Handle network errors or other axios errors
         else if (err.message) {
-          // Check if status is in the error object itself
-          if (err.status) {
-            errorMessage = `Server error (${err.status}): ${typeof err.message === 'string' ? err.message : String(err.message)}`;
+          // Check if message contains Vercel error indicators
+          const msg = typeof err.message === 'string' ? err.message : String(err.message);
+          if (msg.includes('status code 500') || msg.includes('ERR_BAD_RESPONSE')) {
+            errorMessage = `Server error (500): The Python function crashed. Check Vercel function logs. Original: ${msg}`;
+          } else if (err.status) {
+            errorMessage = `Server error (${err.status}): ${msg}`;
           } else {
-            errorMessage = typeof err.message === 'string' ? err.message : String(err.message);
+            errorMessage = msg;
           }
         } 
         // Handle error objects with code/message

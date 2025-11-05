@@ -14,28 +14,56 @@ from pathlib import Path
 SmartFormPopulator = None
 _import_error = None
 
+# Test that basic imports work at module level
+try:
+    # These should always work
+    pass
+except Exception as e:
+    print(f"CRITICAL: Module-level import failed: {e}")
+
 def handler(req):
     """Process form data and generate filled documents - Vercel serverless function"""
-    # Handle CORS preflight
-    if req.get('method') == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-            },
-            'body': ''
-        }
-    
-    # Diagnostic logging
+    # CRITICAL: Wrap everything in try-except to catch ANY error
     try:
-        print(f"Python version: {sys.version}")
-        print(f"Python path: {sys.path}")
-        print(f"Current directory: {os.getcwd()}")
-        print(f"API file location: {__file__}")
-    except Exception as diag_err:
-        print(f"Diagnostic error: {diag_err}")
+        # Handle CORS preflight
+        if req.get('method') == 'OPTIONS':
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                },
+                'body': ''
+            }
+        
+        # Diagnostic logging
+        try:
+            print(f"Python version: {sys.version}")
+            print(f"Python path: {sys.path}")
+            print(f"Current directory: {os.getcwd()}")
+            print(f"API file location: {__file__}")
+        except Exception as diag_err:
+            print(f"Diagnostic error: {diag_err}")
+    except Exception as top_level_err:
+        # Catch ANY error at the top level
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"CRITICAL TOP-LEVEL ERROR: {str(top_level_err)}")
+        print(f"Traceback: {error_details}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+            'body': json.dumps({
+                'success': False,
+                'error': f'Top-level error: {str(top_level_err)}',
+                'type': type(top_level_err).__name__,
+                'details': error_details[:500]
+            })
+        }
     
     # Lazy import of populator - only when handler is called
     global SmartFormPopulator, _import_error
@@ -384,6 +412,29 @@ def handler(req):
                 'Access-Control-Allow-Origin': '*',
             },
             'body': json.dumps(error_response)
+        }
+    except BaseException as e:
+        # Catch absolutely everything, including SystemExit, KeyboardInterrupt
+        import traceback
+        error_details = traceback.format_exc()
+        error_msg = f'Unexpected error: {str(e)}'
+        print(f"❌❌❌ CRITICAL UNEXPECTED ERROR: {error_msg}")
+        print(f"❌ Error type: {type(e).__name__}")
+        print(f"❌ Full traceback: {error_details}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+            'body': json.dumps({
+                'success': False,
+                'error': error_msg,
+                'type': type(e).__name__,
+                'message': error_msg,
+                'code': 500,
+                'details': error_details[:500]
+            })
         }
 
 # Export handler for Vercel (if needed)
