@@ -54,15 +54,16 @@ Should return: `{"status": "healthy"}`
 ## Part 2: Deploy Frontend on Vercel
 
 ### Step 1: Update Frontend to Use Backend URL
-The frontend needs to know where the backend is.
+The frontend already uses `REACT_APP_API_URL` environment variable!
 
-**Option A: Environment Variable (Recommended)**
-1. In Vercel Dashboard → Your Project → Settings → Environment Variables
-2. Add: `REACT_APP_API_URL` = `https://your-app.railway.app`
-3. Redeploy
-
-**Option B: Update Code Directly**
-I'll update the code to use an environment variable.
+1. Go to Vercel Dashboard → Your Project → Settings → Environment Variables
+2. Click "Add New"
+3. Add:
+   - **Name**: `REACT_APP_API_URL`
+   - **Value**: `https://your-app.railway.app` (use your Railway URL from Step 4 above)
+   - **Environment**: Production, Preview, Development (select all)
+4. Click "Save"
+5. Redeploy: Go to Deployments → Click "..." → Redeploy
 
 ### Step 2: Deploy Frontend
 1. Go to https://vercel.com
