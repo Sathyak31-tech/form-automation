@@ -102,10 +102,11 @@ const ProcessForms = ({ data }) => {
       // Extract error message safely - MUST be a string
       let errorMessage = 'An error occurred while processing forms';
       
+      let status = null;
       try {
         // Handle axios error response
         if (err.response) {
-          const status = err.response.status || 500;
+          status = err.response.status || 500;
           const data = err.response.data;
           
           // Handle string response
