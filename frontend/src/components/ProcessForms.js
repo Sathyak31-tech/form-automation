@@ -208,7 +208,12 @@ const ProcessForms = ({ data }) => {
         }
         // Handle network errors or other axios errors
         else if (err.message) {
-          errorMessage = typeof err.message === 'string' ? err.message : String(err.message);
+          // Check if status is in the error object itself
+          if (err.status) {
+            errorMessage = `Server error (${err.status}): ${typeof err.message === 'string' ? err.message : String(err.message)}`;
+          } else {
+            errorMessage = typeof err.message === 'string' ? err.message : String(err.message);
+          }
         } 
         // Handle error objects with code/message
         else if (err.code && err.message) {
@@ -218,9 +223,13 @@ const ProcessForms = ({ data }) => {
         else if (err.status) {
           errorMessage = `Server error (${err.status}): Request failed`;
         }
-        // Fallback: stringify the entire error
+        // Fallback: use error code if available
+        else if (err.code) {
+          errorMessage = `Request failed: ${err.code}`;
+        }
+        // Ultimate fallback
         else {
-          errorMessage = `Request failed: ${err.code || 'Unknown error'}`;
+          errorMessage = 'An unknown error occurred. Please check the browser console for details.';
         }
       } catch (e) {
         // Ultimate fallback
