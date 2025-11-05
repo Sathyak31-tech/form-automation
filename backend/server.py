@@ -23,14 +23,22 @@ if '*' in allowed_origins:
 else:
     CORS(app, origins=allowed_origins)  # Allow specific origins only
 
-# Configuration
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = '../output'  # Output files are in the parent directory
-TEMPLATES_FOLDER = '../templates'  # Templates are in the parent directory
+# Configuration - use absolute paths for Railway deployment
+import os
+from pathlib import Path
+
+# Get the base directory (project root)
+BASE_DIR = Path(__file__).parent.parent if Path(__file__).parent.name == 'backend' else Path(__file__).parent
+BASE_DIR = BASE_DIR.resolve()
+
+UPLOAD_FOLDER = BASE_DIR / 'backend' / 'uploads'
+OUTPUT_FOLDER = BASE_DIR / 'output'
+TEMPLATES_FOLDER = BASE_DIR / 'templates'
+LIB_FOLDER = BASE_DIR / 'lib'
 
 # Ensure directories exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+os.makedirs(str(UPLOAD_FOLDER), exist_ok=True)
+os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
 
 @app.route('/api/process-forms', methods=['POST'])
 def process_forms():
@@ -156,20 +164,39 @@ def process_forms():
                 
             # Copy templates to temp directory
             templates_dir = os.path.join(temp_dir, 'templates')
-            shutil.copytree(TEMPLATES_FOLDER, templates_dir)
+            shutil.copytree(str(TEMPLATES_FOLDER), templates_dir)
             
             # Create output directory
             output_dir = os.path.join(temp_dir, 'output')
             os.makedirs(output_dir, exist_ok=True)
             
-            # Run the populator script
-            populator_script = os.path.join(os.path.dirname(__file__), 'populator.py')
+            # Find populator script - check multiple locations
+            populator_script = None
+            possible_paths = [
+                BASE_DIR / 'lib' / 'populator.py',
+                BASE_DIR / 'backend' / 'populator.py',
+                Path(__file__).parent / 'populator.py',
+            ]
+            for path in possible_paths:
+                if path.exists():
+                    populator_script = str(path)
+                    break
+            
+            if not populator_script:
+                return jsonify({
+                    'success': False,
+                    'error': 'Populator script not found'
+                }), 500
+            
             # Pass signature image path as environment variable if available
             env = os.environ.copy()
             if signature_image_path:
                 env['SIGNATURE_IMAGE_PATH'] = signature_image_path
+            # Add lib directory to PYTHONPATH
+            env['PYTHONPATH'] = str(LIB_FOLDER) + os.pathsep + env.get('PYTHONPATH', '')
+            
             result = subprocess.run([
-                'python', populator_script, 
+                'python3', populator_script, 
                 json_file, 
                 templates_dir, 
                 output_dir
@@ -188,7 +215,7 @@ def process_forms():
             for filename in os.listdir(output_dir):
                 if filename.endswith('.docx'):
                     source_path = os.path.join(output_dir, filename)
-                    dest_path = os.path.join(OUTPUT_FOLDER, filename)
+                    dest_path = str(OUTPUT_FOLDER / filename)
                     shutil.copy2(source_path, dest_path)
                     output_files.append(filename)
                     
@@ -220,17 +247,17 @@ def download_file(filename):
     """Download a processed form file"""
     try:
         # Try the filename as-is first, then with secure_filename
-        file_path = os.path.join(OUTPUT_FOLDER, filename)
+        file_path = str(OUTPUT_FOLDER / filename)
         if not os.path.exists(file_path):
             # Try with secure_filename (spaces converted to underscores)
             secure_name = secure_filename(filename)
-            file_path = os.path.join(OUTPUT_FOLDER, secure_name)
+            file_path = str(OUTPUT_FOLDER / secure_name)
         
         if os.path.exists(file_path):
             return send_file(file_path, as_attachment=True)
         else:
             # List available files for debugging
-            available_files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith('.docx')]
+            available_files = [f for f in os.listdir(str(OUTPUT_FOLDER)) if f.endswith('.docx')]
             return jsonify({
                 'error': f'File not found: {filename}',
                 'available_files': available_files[:5]  # Show first 5 files
@@ -245,8 +272,10 @@ def health_check():
 
 if __name__ == '__main__':
     print("🚀 Starting Form Automation Backend Server...")
-    print("📁 Templates folder:", TEMPLATES_FOLDER)
-    print("📁 Output folder:", OUTPUT_FOLDER)
+    print("📁 Templates folder:", str(TEMPLATES_FOLDER))
+    print("📁 Output folder:", str(OUTPUT_FOLDER))
+    print("📁 Lib folder:", str(LIB_FOLDER))
+    print("📁 Base directory:", str(BASE_DIR))
     
     # Get port from environment variable (for production) or use default 5000
     port = int(os.environ.get('PORT', 5000))
