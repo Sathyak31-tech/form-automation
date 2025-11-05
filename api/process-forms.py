@@ -437,6 +437,11 @@ def handler(req):
             })
         }
 
-# Export handler for Vercel (if needed)
+# Export handler for Vercel
 __all__ = ['handler']
+
+# Make handler available at module level
+if __name__ != '__main__':
+    # This ensures Vercel can find the handler
+    pass
 

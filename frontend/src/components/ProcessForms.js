@@ -108,6 +108,8 @@ const ProcessForms = ({ data }) => {
     } catch (err) {
       console.error('Error processing forms:', err);
       console.error('Error response:', err.response);
+      console.error('Error response.data:', err.response?.data);
+      console.error('Error response.statusText:', err.response?.statusText);
       console.error('Error object:', JSON.stringify(err, null, 2));
       
       // Extract error message safely - MUST be a string
@@ -119,10 +121,20 @@ const ProcessForms = ({ data }) => {
         if (err.response) {
           status = err.response.status || 500;
           const data = err.response.data;
+          const statusText = err.response.statusText;
+          
+          // Log what we actually received
+          console.log('Response data type:', typeof data);
+          console.log('Response data value:', data);
           
           // Check if data is null/undefined (server might not return body)
-          if (!data) {
-            errorMessage = `Server error (${status}): No error details available`;
+          if (data === null || data === undefined) {
+            // Try to get status text
+            if (statusText) {
+              errorMessage = `Server error (${status}): ${statusText}`;
+            } else {
+              errorMessage = `Server error (${status}): The Python function crashed. Check Vercel function logs in the dashboard for details.`;
+            }
           }
           
           // Handle string response
