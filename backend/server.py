@@ -85,11 +85,15 @@ def process_forms():
                     print(f"✅ Saved signature image to: {signature_image_path}")
                     print(f"   File exists: {os.path.exists(signature_image_path)}")
                     print(f"   File size: {os.path.getsize(signature_image_path)} bytes")
+                    import sys
+                    sys.stdout.flush()
                 except Exception as e:
                     print(f"❌ Error saving signature image: {e}")
                     signature_image_path = None
             else:
                 print("⚠️  No signature_image in form_data")
+                import sys
+                sys.stdout.flush()
             
             # Transform form data to match populator's expected structure
             transformed_data = {
@@ -221,8 +225,12 @@ def process_forms():
             if signature_image_path:
                 env['SIGNATURE_IMAGE_PATH'] = signature_image_path
                 print(f"✅ Set SIGNATURE_IMAGE_PATH environment variable: {signature_image_path}")
+                import sys
+                sys.stdout.flush()
             else:
                 print("⚠️  No signature_image_path to set in environment")
+                import sys
+                sys.stdout.flush()
             # Add lib directory to PYTHONPATH
             env['PYTHONPATH'] = str(LIB_FOLDER) + os.pathsep + env.get('PYTHONPATH', '')
             
@@ -234,12 +242,19 @@ def process_forms():
             ], capture_output=True, text=True, cwd=os.path.dirname(__file__), env=env)
             
             # Log subprocess output for debugging
+            # Force flush to ensure logs appear in Railway
+            import sys
+            sys.stdout.flush()
+            sys.stderr.flush()
+            
             if result.stdout:
                 print("📋 Populator stdout:")
                 print(result.stdout)
+                sys.stdout.flush()
             if result.stderr:
                 print("⚠️  Populator stderr:")
                 print(result.stderr)
+                sys.stderr.flush()
             
             if result.returncode != 0:
                 return jsonify({
