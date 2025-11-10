@@ -79,8 +79,17 @@ def process_forms():
                 # Save signature image to temp directory
                 import base64
                 signature_image_path = os.path.join(temp_dir, 'signature.png')
-                with open(signature_image_path, 'wb') as f:
-                    f.write(base64.b64decode(signature_base64))
+                try:
+                    with open(signature_image_path, 'wb') as f:
+                        f.write(base64.b64decode(signature_base64))
+                    print(f"✅ Saved signature image to: {signature_image_path}")
+                    print(f"   File exists: {os.path.exists(signature_image_path)}")
+                    print(f"   File size: {os.path.getsize(signature_image_path)} bytes")
+                except Exception as e:
+                    print(f"❌ Error saving signature image: {e}")
+                    signature_image_path = None
+            else:
+                print("⚠️  No signature_image in form_data")
             
             # Transform form data to match populator's expected structure
             transformed_data = {
@@ -211,6 +220,9 @@ def process_forms():
             env = os.environ.copy()
             if signature_image_path:
                 env['SIGNATURE_IMAGE_PATH'] = signature_image_path
+                print(f"✅ Set SIGNATURE_IMAGE_PATH environment variable: {signature_image_path}")
+            else:
+                print("⚠️  No signature_image_path to set in environment")
             # Add lib directory to PYTHONPATH
             env['PYTHONPATH'] = str(LIB_FOLDER) + os.pathsep + env.get('PYTHONPATH', '')
             
@@ -220,6 +232,14 @@ def process_forms():
                 templates_dir, 
                 output_dir
             ], capture_output=True, text=True, cwd=os.path.dirname(__file__), env=env)
+            
+            # Log subprocess output for debugging
+            if result.stdout:
+                print("📋 Populator stdout:")
+                print(result.stdout)
+            if result.stderr:
+                print("⚠️  Populator stderr:")
+                print(result.stderr)
             
             if result.returncode != 0:
                 return jsonify({
