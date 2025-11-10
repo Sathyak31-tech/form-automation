@@ -554,7 +554,7 @@ class SmartFormPopulator:
         t = all_text.lower()
         if "background verification" in t:
             return "background_verification"
-        if "form 2 revised" in t or "nomination and declaration form" in t:
+        if "form 2 revised" in t or "nomination and declaration form" in t or "epf" in t and "nomination" in t:
             return "epf_nomination"
         if "gratuity" in t:
             return "gratuity"
@@ -957,6 +957,8 @@ class SmartFormPopulator:
             fixes_applied += self.fill_pf_account_form(doc, structure)
             fixes_applied += self._fill_current_address_everywhere(doc)
         elif structure["form_type"] == "epf_nomination":
+            print(f"  🎯 Processing EPF Nomination Form")
+            print(f"  📷 Signature image path: {self.signature_image_path}")
             fixes_applied += self.fill_epf_nomination_form(doc, structure)
             fixes_applied += self._fill_current_address_everywhere(doc)
         else:
@@ -2183,6 +2185,8 @@ class SmartFormPopulator:
 
     def fill_epf_nomination_form(self, doc: Document, structure: Dict) -> int:
         """Fill EPF Nomination form with employee and nominee details."""
+        print(f"  🔧 fill_epf_nomination_form called")
+        print(f"  📷 Signature image path: {self.signature_image_path}")
         fixes_applied = 0
         personal_details = self.form_fields.get('personal_details', {})
         epf_gratuity = self.form_fields.get('epf_and_gratuity', {})
