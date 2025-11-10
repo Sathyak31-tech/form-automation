@@ -2334,10 +2334,14 @@ class SmartFormPopulator:
                         fixes_applied += 1
 
         # Add signature at the end of the document (EPF Nomination Form)
-        # Look for signature fields in the last few paragraphs or tables
-        # Check last 10 paragraphs for signature fields
-        for p in doc.paragraphs[-10:]:
-            text = (p.text or "").strip().lower()
+        # Look for signature fields in paragraphs - check ALL paragraphs, especially those with "employer" or "establishment"
+        signature_inserted = False
+        
+        # First, look for the specific "Signature of the employer" pattern
+        for i, p in enumerate(doc.paragraphs):
+            text = (p.text or "").strip()
+            text_lower = text.lower()
+            
             # Check if paragraph already has an image
             has_image = False
             try:
@@ -2348,13 +2352,77 @@ class SmartFormPopulator:
             except:
                 pass
             
-            if ("signature" in text and (":" in text or text == "signature")) and not has_image:
-                # Check if this paragraph is empty or just has "Signature:" text
-                if text in ["signature:", "signature"] or self._is_placeholder(text):
+            if has_image:
+                continue
+            
+            # Look for "Signature of the employer" or similar patterns
+            if ("signature" in text_lower and 
+                ("employer" in text_lower or "establishment" in text_lower or "authorised" in text_lower or "authorized" in text_lower)):
+                # This paragraph contains the signature label
+                print(f"🔍 Found employer signature label: {text[:100]}")
+                
+                # Check if this paragraph itself is mostly just the label (no signature space)
+                # If it's just the label text, check the next 2-3 paragraphs for empty signature space
+                if len(text) > 20:  # It's a full label paragraph, not just "Signature:"
+                    # Check next 3 paragraphs for empty signature field
+                    for j in range(1, 4):
+                        if i + j < len(doc.paragraphs):
+                            next_p = doc.paragraphs[i + j]
+                            next_text = (next_p.text or "").strip()
+                            
+                            # Check if next paragraph has image
+                            next_has_image = False
+                            try:
+                                for run in next_p.runs:
+                                    if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
+                                        next_has_image = True
+                                        break
+                            except:
+                                pass
+                            
+                            if next_has_image:
+                                continue
+                            
+                            # If next paragraph is empty or just has placeholder text, insert signature there
+                            if not next_text or self._is_placeholder(next_text) or len(next_text) < 10:
+                                if self._insert_signature_image(next_p):
+                                    fixes_applied += 1
+                                    signature_inserted = True
+                                    print(f"✅ Inserted signature in EPF Nomination Form (after employer signature label, paragraph {i+j+1})")
+                                    break
+                    
+                    if signature_inserted:
+                        break
+                else:
+                    # Short text like "Signature:" - insert here
                     if self._insert_signature_image(p):
                         fixes_applied += 1
-                        print(f"✅ Inserted signature in EPF Nomination Form paragraph")
+                        signature_inserted = True
+                        print(f"✅ Inserted signature in EPF Nomination Form (employer signature paragraph)")
                         break
+        
+        # If not found yet, check last 15 paragraphs for any signature fields
+        if not signature_inserted:
+            for p in doc.paragraphs[-15:]:
+                text = (p.text or "").strip().lower()
+                # Check if paragraph already has an image
+                has_image = False
+                try:
+                    for run in p.runs:
+                        if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
+                            has_image = True
+                            break
+                except:
+                    pass
+                
+                if ("signature" in text and (":" in text or text == "signature")) and not has_image:
+                    # Check if this paragraph is empty or just has "Signature:" text
+                    if text in ["signature:", "signature"] or self._is_placeholder(text):
+                        if self._insert_signature_image(p):
+                            fixes_applied += 1
+                            signature_inserted = True
+                            print(f"✅ Inserted signature in EPF Nomination Form paragraph")
+                            break
         
         # Also check tables for signature fields (especially at the end)
         for table in doc.tables:
