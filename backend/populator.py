@@ -1700,7 +1700,52 @@ class SmartFormPopulator:
 
     def fill_declaration_form(self, doc: Document, structure: Dict) -> int:
         """Simplified declaration form filling - fills data as text in paragraphs and tables."""
-        return self._fill_declaration_form(doc)
+        fixes = self._fill_declaration_form(doc)
+        
+        # Add signature to Declaration Form
+        # Look for signature fields in paragraphs
+        for p in doc.paragraphs:
+            text = (p.text or "").strip().lower()
+            # Check if paragraph already has an image
+            has_image = False
+            try:
+                for run in p.runs:
+                    if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
+                        has_image = True
+                        break
+            except:
+                pass
+            
+            if ("signature" in text and (":" in text or text == "signature")) and not has_image:
+                # Check if this paragraph is empty or just has "Signature:" text
+                if text in ["signature:", "signature"] or self._is_placeholder(text):
+                    if self._insert_signature_image(p):
+                        fixes += 1
+                        print(f"✅ Inserted signature in Declaration Form paragraph")
+                        break
+        
+        # Look for signature fields in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip().lower()
+                    if "signature" in cell_text and not self._cell_has_image(cell):
+                        # If this cell has "Signature" label, insert image in the same cell or next cell
+                        if cell_text in ["signature:", "signature"] or self._is_placeholder(cell_text):
+                            if self._insert_signature_in_cell(cell):
+                                fixes += 1
+                                print(f"✅ Inserted signature in Declaration Form table cell")
+                                break
+                        # If this is a label cell, check if next cell is empty for signature
+                        elif "signature" in cell_text and cell_idx < len(row.cells) - 1:
+                            next_cell = row.cells[cell_idx + 1]
+                            if not self._cell_has_image(next_cell) and (not next_cell.text.strip() or self._is_placeholder(next_cell.text)):
+                                if self._insert_signature_in_cell(next_cell):
+                                    fixes += 1
+                                    print(f"✅ Inserted signature in Declaration Form table (next cell)")
+                                    break
+        
+        return fixes
 
     def fill_gratuity_form(self, doc: Document, structure: Dict) -> int:
         fixes = 0
@@ -2287,6 +2332,51 @@ class SmartFormPopulator:
                         row.cells[1].text = nominee_dob_value  # Date of Birth
                         row.cells[2].text = nominee_relationship  # Relationship with member
                         fixes_applied += 1
+
+        # Add signature at the end of the document (EPF Nomination Form)
+        # Look for signature fields in the last few paragraphs or tables
+        # Check last 10 paragraphs for signature fields
+        for p in doc.paragraphs[-10:]:
+            text = (p.text or "").strip().lower()
+            # Check if paragraph already has an image
+            has_image = False
+            try:
+                for run in p.runs:
+                    if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
+                        has_image = True
+                        break
+            except:
+                pass
+            
+            if ("signature" in text and (":" in text or text == "signature")) and not has_image:
+                # Check if this paragraph is empty or just has "Signature:" text
+                if text in ["signature:", "signature"] or self._is_placeholder(text):
+                    if self._insert_signature_image(p):
+                        fixes_applied += 1
+                        print(f"✅ Inserted signature in EPF Nomination Form paragraph")
+                        break
+        
+        # Also check tables for signature fields (especially at the end)
+        for table in doc.tables:
+            # Check the last few rows of each table
+            for row in table.rows[-3:]:
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip().lower()
+                    if "signature" in cell_text and not self._cell_has_image(cell):
+                        # If this cell has "Signature" label, insert image in the next cell or same cell
+                        if cell_text in ["signature:", "signature"] or self._is_placeholder(cell_text):
+                            if self._insert_signature_in_cell(cell):
+                                fixes_applied += 1
+                                print(f"✅ Inserted signature in EPF Nomination Form table cell")
+                                break
+                        # If this is a label cell, check if next cell is empty for signature
+                        elif "signature" in cell_text and cell_idx < len(row.cells) - 1:
+                            next_cell = row.cells[cell_idx + 1]
+                            if not self._cell_has_image(next_cell) and (not next_cell.text.strip() or self._is_placeholder(next_cell.text)):
+                                if self._insert_signature_in_cell(next_cell):
+                                    fixes_applied += 1
+                                    print(f"✅ Inserted signature in EPF Nomination Form table (next cell)")
+                                    break
 
         return fixes_applied
 
