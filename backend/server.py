@@ -66,6 +66,15 @@ def process_forms():
         # Get form data from request
         form_data = request.json
         
+        # Debug: Check if signature_image is in the request
+        has_signature = bool(form_data.get('signature_image'))
+        signature_length = len(form_data.get('signature_image', '')) if form_data.get('signature_image') else 0
+        print(f"🔍 DEBUG: Received form data")
+        print(f"   Has signature_image: {has_signature}")
+        print(f"   Signature data length: {signature_length} characters")
+        import sys
+        sys.stdout.flush()
+        
         # Create temporary directory for this session
         with tempfile.TemporaryDirectory() as temp_dir:
             # Handle signature image - save it to temp directory if provided
