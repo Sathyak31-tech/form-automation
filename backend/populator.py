@@ -1596,67 +1596,101 @@ class SmartFormPopulator:
             t = p.text.strip()
             # Check if paragraph contains "You:" (exact match or with whitespace)
             if re.search(r"^You\s*:\s*$", t, re.IGNORECASE):
-                # "You:" is alone - check next paragraph(s) for empty content
-                if para_idx + 1 < len(paragraphs_list):
-                    next_p = paragraphs_list[para_idx + 1]
+                # "You:" is alone - check next 3 paragraphs for empty content
+                filled = False
+                for next_idx in range(para_idx + 1, min(para_idx + 4, len(paragraphs_list))):
+                    next_p = paragraphs_list[next_idx]
                     next_text = (next_p.text or "").strip()
                     # If next paragraph is empty or placeholder, fill it
                     if not next_text or self._is_placeholder(next_text):
                         next_p.text = address_text
                         fixes += 1
-                        print(f"✅ NDA: Filled 'You:' section in next paragraph with: {address_text[:50]}...")
-                else:
-                    # No next paragraph, append to current
+                        filled = True
+                        print(f"✅ NDA: Filled 'You:' section in paragraph {next_idx} with: {address_text[:50]}...")
+                        break
+                if not filled:
+                    # No empty next paragraph found, append to current
                     p.text = f"You:\n{address_text}"
                     fixes += 1
-            # Check if paragraph contains "You:" with placeholder after it
+                    print(f"✅ NDA: Filled 'You:' section in same paragraph with: {address_text[:50]}...")
+            # Check if paragraph contains "You:" with placeholder after it (same paragraph)
             elif re.search(r"^You\s*:\s*", t, re.IGNORECASE):
-                match = re.match(r"^You\s*:\s*(.+)$", t, re.IGNORECASE | re.DOTALL)
-                if match:
-                    after_colon = match.group(1).strip()
-                    if self._is_placeholder(after_colon) or not after_colon:
-                        p.text = f"You:\n{address_text}"
-                        fixes += 1
-                        print(f"✅ NDA: Filled 'You:' section in same paragraph with: {address_text[:50]}...")
+                # Check if it's just "You:" with whitespace/line breaks
+                if re.search(r"^You\s*:\s*[\n\r\s]*$", t, re.IGNORECASE | re.MULTILINE):
+                    # Has line breaks but empty after, fill it
+                    p.text = f"You:\n{address_text}"
+                    fixes += 1
+                    print(f"✅ NDA: Filled 'You:' section (with line breaks) with: {address_text[:50]}...")
+                else:
+                    # Check if what follows is a placeholder
+                    match = re.match(r"^You\s*:\s*(.+)$", t, re.IGNORECASE | re.DOTALL)
+                    if match:
+                        after_colon = match.group(1).strip()
+                        if self._is_placeholder(after_colon) or not after_colon:
+                            p.text = f"You:\n{address_text}"
+                            fixes += 1
+                            print(f"✅ NDA: Filled 'You:' section in same paragraph with: {address_text[:50]}...")
 
-        # Fill "You:" section in tables
+        # Fill "You:" section in tables - check paragraphs within cells
         for table in doc.tables:
             for row_idx, row in enumerate(table.rows):
                 for cell_idx, cell in enumerate(row.cells):
-                    cell_text = (cell.text or "").strip()
-                    # Check if cell contains "You:" exactly
-                    if re.search(r"^You\s*:\s*$", cell_text, re.IGNORECASE):
-                        # Check next cell in same row
-                        if cell_idx + 1 < len(row.cells):
-                            next_cell = row.cells[cell_idx + 1]
-                            next_cell_text = (next_cell.text or "").strip()
-                            if not next_cell_text or self._is_placeholder(next_cell_text):
-                                next_cell.text = address_text
-                                fixes += 1
-                                print(f"✅ NDA: Filled 'You:' section in next cell with: {address_text[:50]}...")
-                        # Also check next row, same column
-                        elif row_idx + 1 < len(table.rows):
-                            next_row = table.rows[row_idx + 1]
-                            if cell_idx < len(next_row.cells):
-                                next_cell = next_row.cells[cell_idx]
+                    # Check paragraphs within the cell
+                    cell_paragraphs = list(cell.paragraphs)
+                    for para_idx, cell_p in enumerate(cell_paragraphs):
+                        para_text = (cell_p.text or "").strip()
+                        # Check if paragraph contains "You:" exactly
+                        if re.search(r"^You\s*:\s*$", para_text, re.IGNORECASE):
+                            # Check next paragraph in same cell
+                            filled = False
+                            if para_idx + 1 < len(cell_paragraphs):
+                                next_cell_p = cell_paragraphs[para_idx + 1]
+                                next_para_text = (next_cell_p.text or "").strip()
+                                if not next_para_text or self._is_placeholder(next_para_text):
+                                    next_cell_p.text = address_text
+                                    fixes += 1
+                                    filled = True
+                                    print(f"✅ NDA: Filled 'You:' section in next paragraph of cell with: {address_text[:50]}...")
+                            # If not filled, check next cell in same row
+                            if not filled and cell_idx + 1 < len(row.cells):
+                                next_cell = row.cells[cell_idx + 1]
                                 next_cell_text = (next_cell.text or "").strip()
                                 if not next_cell_text or self._is_placeholder(next_cell_text):
                                     next_cell.text = address_text
                                     fixes += 1
-                                    print(f"✅ NDA: Filled 'You:' section in next row with: {address_text[:50]}...")
-                        else:
-                            # No next cell/row, append to current
-                            cell.text = f"You:\n{address_text}"
-                            fixes += 1
-                    # Check if cell contains "You:" with placeholder
-                    elif re.search(r"^You\s*:\s*", cell_text, re.IGNORECASE):
-                        match = re.match(r"^You\s*:\s*(.+)$", cell_text, re.IGNORECASE | re.DOTALL)
-                        if match:
-                            after_colon = match.group(1).strip()
-                            if self._is_placeholder(after_colon) or not after_colon:
-                                cell.text = f"You:\n{address_text}"
+                                    filled = True
+                                    print(f"✅ NDA: Filled 'You:' section in next cell with: {address_text[:50]}...")
+                            # Also check next row, same column
+                            if not filled and row_idx + 1 < len(table.rows):
+                                next_row = table.rows[row_idx + 1]
+                                if cell_idx < len(next_row.cells):
+                                    next_cell = next_row.cells[cell_idx]
+                                    next_cell_text = (next_cell.text or "").strip()
+                                    if not next_cell_text or self._is_placeholder(next_cell_text):
+                                        next_cell.text = address_text
+                                        fixes += 1
+                                        filled = True
+                                        print(f"✅ NDA: Filled 'You:' section in next row with: {address_text[:50]}...")
+                            if not filled:
+                                # No next paragraph/cell/row, append to current
+                                cell_p.text = f"You:\n{address_text}"
                                 fixes += 1
-                                print(f"✅ NDA: Filled 'You:' section in cell with: {address_text[:50]}...")
+                                print(f"✅ NDA: Filled 'You:' section in cell paragraph with: {address_text[:50]}...")
+                        # Check if paragraph contains "You:" with placeholder
+                        elif re.search(r"^You\s*:\s*", para_text, re.IGNORECASE):
+                            # Check if it's just "You:" with whitespace/line breaks
+                            if re.search(r"^You\s*:\s*[\n\r\s]*$", para_text, re.IGNORECASE | re.MULTILINE):
+                                cell_p.text = f"You:\n{address_text}"
+                                fixes += 1
+                                print(f"✅ NDA: Filled 'You:' section in cell (with line breaks) with: {address_text[:50]}...")
+                            else:
+                                match = re.match(r"^You\s*:\s*(.+)$", para_text, re.IGNORECASE | re.DOTALL)
+                                if match:
+                                    after_colon = match.group(1).strip()
+                                    if self._is_placeholder(after_colon) or not after_colon:
+                                        cell_p.text = f"You:\n{address_text}"
+                                        fixes += 1
+                                        print(f"✅ NDA: Filled 'You:' section in cell paragraph with: {address_text[:50]}...")
 
         for p in doc.paragraphs:
             t = p.text.strip()
@@ -1861,67 +1895,101 @@ class SmartFormPopulator:
             t = p.text.strip()
             # Check if paragraph contains "You:" (exact match or with whitespace)
             if re.search(r"^You\s*:\s*$", t, re.IGNORECASE):
-                # "You:" is alone - check next paragraph(s) for empty content
-                if para_idx + 1 < len(paragraphs_list):
-                    next_p = paragraphs_list[para_idx + 1]
+                # "You:" is alone - check next 3 paragraphs for empty content
+                filled = False
+                for next_idx in range(para_idx + 1, min(para_idx + 4, len(paragraphs_list))):
+                    next_p = paragraphs_list[next_idx]
                     next_text = (next_p.text or "").strip()
                     # If next paragraph is empty or placeholder, fill it
                     if not next_text or self._is_placeholder(next_text):
                         next_p.text = address_text
                         fixes += 1
-                        print(f"✅ LOA: Filled 'You:' section in next paragraph with: {address_text[:50]}...")
-                else:
-                    # No next paragraph, append to current
+                        filled = True
+                        print(f"✅ LOA: Filled 'You:' section in paragraph {next_idx} with: {address_text[:50]}...")
+                        break
+                if not filled:
+                    # No empty next paragraph found, append to current
                     p.text = f"You:\n{address_text}"
                     fixes += 1
-            # Check if paragraph contains "You:" with placeholder after it
+                    print(f"✅ LOA: Filled 'You:' section in same paragraph with: {address_text[:50]}...")
+            # Check if paragraph contains "You:" with placeholder after it (same paragraph)
             elif re.search(r"^You\s*:\s*", t, re.IGNORECASE):
-                match = re.match(r"^You\s*:\s*(.+)$", t, re.IGNORECASE | re.DOTALL)
-                if match:
-                    after_colon = match.group(1).strip()
-                    if self._is_placeholder(after_colon) or not after_colon:
-                        p.text = f"You:\n{address_text}"
-                        fixes += 1
-                        print(f"✅ LOA: Filled 'You:' section in same paragraph with: {address_text[:50]}...")
+                # Check if it's just "You:" with whitespace/line breaks
+                if re.search(r"^You\s*:\s*[\n\r\s]*$", t, re.IGNORECASE | re.MULTILINE):
+                    # Has line breaks but empty after, fill it
+                    p.text = f"You:\n{address_text}"
+                    fixes += 1
+                    print(f"✅ LOA: Filled 'You:' section (with line breaks) with: {address_text[:50]}...")
+                else:
+                    # Check if what follows is a placeholder
+                    match = re.match(r"^You\s*:\s*(.+)$", t, re.IGNORECASE | re.DOTALL)
+                    if match:
+                        after_colon = match.group(1).strip()
+                        if self._is_placeholder(after_colon) or not after_colon:
+                            p.text = f"You:\n{address_text}"
+                            fixes += 1
+                            print(f"✅ LOA: Filled 'You:' section in same paragraph with: {address_text[:50]}...")
 
-        # Fill "You:" section in tables
+        # Fill "You:" section in tables - check paragraphs within cells
         for table in doc.tables:
             for row_idx, row in enumerate(table.rows):
                 for cell_idx, cell in enumerate(row.cells):
-                    cell_text = (cell.text or "").strip()
-                    # Check if cell contains "You:" exactly
-                    if re.search(r"^You\s*:\s*$", cell_text, re.IGNORECASE):
-                        # Check next cell in same row
-                        if cell_idx + 1 < len(row.cells):
-                            next_cell = row.cells[cell_idx + 1]
-                            next_cell_text = (next_cell.text or "").strip()
-                            if not next_cell_text or self._is_placeholder(next_cell_text):
-                                next_cell.text = address_text
-                                fixes += 1
-                                print(f"✅ LOA: Filled 'You:' section in next cell with: {address_text[:50]}...")
-                        # Also check next row, same column
-                        elif row_idx + 1 < len(table.rows):
-                            next_row = table.rows[row_idx + 1]
-                            if cell_idx < len(next_row.cells):
-                                next_cell = next_row.cells[cell_idx]
+                    # Check paragraphs within the cell
+                    cell_paragraphs = list(cell.paragraphs)
+                    for para_idx, cell_p in enumerate(cell_paragraphs):
+                        para_text = (cell_p.text or "").strip()
+                        # Check if paragraph contains "You:" exactly
+                        if re.search(r"^You\s*:\s*$", para_text, re.IGNORECASE):
+                            # Check next paragraph in same cell
+                            filled = False
+                            if para_idx + 1 < len(cell_paragraphs):
+                                next_cell_p = cell_paragraphs[para_idx + 1]
+                                next_para_text = (next_cell_p.text or "").strip()
+                                if not next_para_text or self._is_placeholder(next_para_text):
+                                    next_cell_p.text = address_text
+                                    fixes += 1
+                                    filled = True
+                                    print(f"✅ LOA: Filled 'You:' section in next paragraph of cell with: {address_text[:50]}...")
+                            # If not filled, check next cell in same row
+                            if not filled and cell_idx + 1 < len(row.cells):
+                                next_cell = row.cells[cell_idx + 1]
                                 next_cell_text = (next_cell.text or "").strip()
                                 if not next_cell_text or self._is_placeholder(next_cell_text):
                                     next_cell.text = address_text
                                     fixes += 1
-                                    print(f"✅ LOA: Filled 'You:' section in next row with: {address_text[:50]}...")
-                        else:
-                            # No next cell/row, append to current
-                            cell.text = f"You:\n{address_text}"
-                            fixes += 1
-                    # Check if cell contains "You:" with placeholder
-                    elif re.search(r"^You\s*:\s*", cell_text, re.IGNORECASE):
-                        match = re.match(r"^You\s*:\s*(.+)$", cell_text, re.IGNORECASE | re.DOTALL)
-                        if match:
-                            after_colon = match.group(1).strip()
-                            if self._is_placeholder(after_colon) or not after_colon:
-                                cell.text = f"You:\n{address_text}"
+                                    filled = True
+                                    print(f"✅ LOA: Filled 'You:' section in next cell with: {address_text[:50]}...")
+                            # Also check next row, same column
+                            if not filled and row_idx + 1 < len(table.rows):
+                                next_row = table.rows[row_idx + 1]
+                                if cell_idx < len(next_row.cells):
+                                    next_cell = next_row.cells[cell_idx]
+                                    next_cell_text = (next_cell.text or "").strip()
+                                    if not next_cell_text or self._is_placeholder(next_cell_text):
+                                        next_cell.text = address_text
+                                        fixes += 1
+                                        filled = True
+                                        print(f"✅ LOA: Filled 'You:' section in next row with: {address_text[:50]}...")
+                            if not filled:
+                                # No next paragraph/cell/row, append to current
+                                cell_p.text = f"You:\n{address_text}"
                                 fixes += 1
-                                print(f"✅ LOA: Filled 'You:' section in cell with: {address_text[:50]}...")
+                                print(f"✅ LOA: Filled 'You:' section in cell paragraph with: {address_text[:50]}...")
+                        # Check if paragraph contains "You:" with placeholder
+                        elif re.search(r"^You\s*:\s*", para_text, re.IGNORECASE):
+                            # Check if it's just "You:" with whitespace/line breaks
+                            if re.search(r"^You\s*:\s*[\n\r\s]*$", para_text, re.IGNORECASE | re.MULTILINE):
+                                cell_p.text = f"You:\n{address_text}"
+                                fixes += 1
+                                print(f"✅ LOA: Filled 'You:' section in cell (with line breaks) with: {address_text[:50]}...")
+                            else:
+                                match = re.match(r"^You\s*:\s*(.+)$", para_text, re.IGNORECASE | re.DOTALL)
+                                if match:
+                                    after_colon = match.group(1).strip()
+                                    if self._is_placeholder(after_colon) or not after_colon:
+                                        cell_p.text = f"You:\n{address_text}"
+                                        fixes += 1
+                                        print(f"✅ LOA: Filled 'You:' section in cell paragraph with: {address_text[:50]}...")
 
         for p in doc.paragraphs:
             t = p.text.strip()
