@@ -1583,6 +1583,54 @@ class SmartFormPopulator:
         fixes = 0
         name = self._get("name")
         title = self.emp[0].get("position_and_department", "") if self.emp else ""
+        
+        # Get address information for "You:" section
+        current_addr = self.addr.get("current", {}) or {}
+        full_address = current_addr.get("full_address", "") or current_addr.get("town_or_city_name", "")
+        address_text = f"{name}\n{full_address}" if full_address else name
+
+        # Fill "You:" section in paragraphs
+        for p in doc.paragraphs:
+            t = p.text.strip()
+            # Check if paragraph contains "You:" followed by empty space or placeholder
+            if re.search(r"^You\s*:\s*$", t, re.IGNORECASE) or re.search(r"^You\s*:\s*[_\.\-\s–—]+$", t, re.IGNORECASE):
+                p.text = f"You:\n{address_text}"
+                fixes += 1
+            # Also check for "You:" with some text after it that might be a placeholder
+            elif re.search(r"^You\s*:\s*", t, re.IGNORECASE):
+                # Check if what follows is a placeholder
+                match = re.match(r"^You\s*:\s*(.+)$", t, re.IGNORECASE)
+                if match:
+                    after_colon = match.group(1).strip()
+                    if self._is_placeholder(after_colon) or not after_colon:
+                        p.text = f"You:\n{address_text}"
+                        fixes += 1
+
+        # Fill "You:" section in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip()
+                    # Check if cell contains "You:" followed by empty space or placeholder
+                    if re.search(r"^You\s*:\s*$", cell_text, re.IGNORECASE) or re.search(r"^You\s*:\s*[_\.\-\s–—]+$", cell_text, re.IGNORECASE):
+                        cell.text = f"You:\n{address_text}"
+                        fixes += 1
+                    # Also check for "You:" with placeholder text after it
+                    elif re.search(r"^You\s*:\s*", cell_text, re.IGNORECASE):
+                        match = re.match(r"^You\s*:\s*(.+)$", cell_text, re.IGNORECASE)
+                        if match:
+                            after_colon = match.group(1).strip()
+                            if self._is_placeholder(after_colon) or not after_colon:
+                                cell.text = f"You:\n{address_text}"
+                                fixes += 1
+                    # Check if cell is empty and previous cell in same row contains "You:"
+                    elif cell_idx > 0:
+                        prev_cell_text = (row.cells[cell_idx - 1].text or "").strip()
+                        if re.search(r"^You\s*:\s*$", prev_cell_text, re.IGNORECASE):
+                            # This cell is right after "You:", fill it with name and address
+                            if self._is_placeholder(cell_text) or not cell_text:
+                                cell.text = address_text
+                                fixes += 1
 
         for p in doc.paragraphs:
             t = p.text.strip()
@@ -1774,6 +1822,54 @@ class SmartFormPopulator:
         name = self._get("name")
         title = self.emp[0].get("position_and_department", "") if self.emp else ""
         employer = self.emp[0].get("employer_name_and_branch", self.emp[0].get("employer_name", "")) if self.emp else ""
+        
+        # Get address information for "You:" section
+        current_addr = self.addr.get("current", {}) or {}
+        full_address = current_addr.get("full_address", "") or current_addr.get("town_or_city_name", "")
+        address_text = f"{name}\n{full_address}" if full_address else name
+
+        # Fill "You:" section in paragraphs
+        for p in doc.paragraphs:
+            t = p.text.strip()
+            # Check if paragraph contains "You:" followed by empty space or placeholder
+            if re.search(r"^You\s*:\s*$", t, re.IGNORECASE) or re.search(r"^You\s*:\s*[_\.\-\s–—]+$", t, re.IGNORECASE):
+                p.text = f"You:\n{address_text}"
+                fixes += 1
+            # Also check for "You:" with some text after it that might be a placeholder
+            elif re.search(r"^You\s*:\s*", t, re.IGNORECASE):
+                # Check if what follows is a placeholder
+                match = re.match(r"^You\s*:\s*(.+)$", t, re.IGNORECASE)
+                if match:
+                    after_colon = match.group(1).strip()
+                    if self._is_placeholder(after_colon) or not after_colon:
+                        p.text = f"You:\n{address_text}"
+                        fixes += 1
+
+        # Fill "You:" section in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = (cell.text or "").strip()
+                    # Check if cell contains "You:" followed by empty space or placeholder
+                    if re.search(r"^You\s*:\s*$", cell_text, re.IGNORECASE) or re.search(r"^You\s*:\s*[_\.\-\s–—]+$", cell_text, re.IGNORECASE):
+                        cell.text = f"You:\n{address_text}"
+                        fixes += 1
+                    # Also check for "You:" with placeholder text after it
+                    elif re.search(r"^You\s*:\s*", cell_text, re.IGNORECASE):
+                        match = re.match(r"^You\s*:\s*(.+)$", cell_text, re.IGNORECASE)
+                        if match:
+                            after_colon = match.group(1).strip()
+                            if self._is_placeholder(after_colon) or not after_colon:
+                                cell.text = f"You:\n{address_text}"
+                                fixes += 1
+                    # Check if cell is empty and previous cell in same row contains "You:"
+                    elif cell_idx > 0:
+                        prev_cell_text = (row.cells[cell_idx - 1].text or "").strip()
+                        if re.search(r"^You\s*:\s*$", prev_cell_text, re.IGNORECASE):
+                            # This cell is right after "You:", fill it with name and address
+                            if self._is_placeholder(cell_text) or not cell_text:
+                                cell.text = address_text
+                                fixes += 1
 
         for p in doc.paragraphs:
             t = p.text.strip()
