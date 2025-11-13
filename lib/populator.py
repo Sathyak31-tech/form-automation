@@ -14,6 +14,7 @@ from docx import Document
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 def today_str(fmt: str = "%d-%m-%Y") -> str:
@@ -2523,39 +2524,45 @@ class SmartFormPopulator:
                 pass
             return False
 
-        # Handle subscriber signature block ("Signature or thumb impression of the subscriber")
-        subscriber_signature_inserted = False
-        for idx, p in enumerate(doc.paragraphs):
-            text = (p.text or "")
-            text_lower = text.strip().lower()
+        # Handle subscriber signature labels first
+        subscriber_labels = []
+        for idx, paragraph in enumerate(doc.paragraphs):
+            text_lower = (paragraph.text or "").strip().lower()
             if "signature" in text_lower and "subscriber" in text_lower:
-                if _paragraph_has_image(p):
-                    subscriber_signature_inserted = True
-                    break
+                subscriber_labels.append((idx, paragraph))
 
-                if len(text_lower) <= 60 and "strike out" not in text_lower:
-                    if self._insert_signature_image(p):
+        for idx, paragraph in subscriber_labels:
+            if _paragraph_has_image(paragraph):
+                continue
+
+            inserted = False
+            for j in range(1, 6):
+                if idx + j >= len(doc.paragraphs):
+                    break
+                next_paragraph = doc.paragraphs[idx + j]
+                if _paragraph_has_image(next_paragraph):
+                    inserted = True
+                    break
+                next_text = (next_paragraph.text or "").strip()
+                if not next_text or self._is_placeholder(next_text) or len(next_text) < 3:
+                    if self._insert_signature_image(next_paragraph):
                         fixes_applied += 1
-                        subscriber_signature_inserted = True
-                        print("  ✅ Inserted subscriber signature in label paragraph")
-                        break
-
-                for j in range(1, 6):
-                    if idx + j >= len(doc.paragraphs):
-                        break
-                    next_p = doc.paragraphs[idx + j]
-                    if _paragraph_has_image(next_p):
-                        subscriber_signature_inserted = True
-                        break
-                    next_text = (next_p.text or "").strip()
-                    if not next_text or self._is_placeholder(next_text) or len(next_text) < 3:
-                        if self._insert_signature_image(next_p):
-                            fixes_applied += 1
-                            subscriber_signature_inserted = True
-                            print(f"  ✅ Inserted subscriber signature in paragraph {idx + j + 1}")
-                        break
-                if subscriber_signature_inserted:
+                        inserted = True
+                        print(f"  ✅ Inserted subscriber signature in paragraph {idx + j + 1}")
                     break
+
+            if inserted:
+                continue
+
+            new_paragraph = paragraph.insert_paragraph_after("")
+            try:
+                new_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            except Exception:
+                pass
+
+            if self._insert_signature_image(new_paragraph):
+                fixes_applied += 1
+                print("  ✅ Inserted subscriber signature in newly added paragraph")
         
         # First, look for the specific "Signature of the employer" pattern
         for i, p in enumerate(doc.paragraphs):
