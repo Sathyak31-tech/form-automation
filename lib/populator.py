@@ -249,7 +249,7 @@ class SmartFormPopulator:
         
     DECLARATION_KEYWORDS = [
     (["name", "member name", "full name", "candidate name"], "name"),
-    (["father", "father’s", "father's", "husband", "husband’s", "husband's"], "father_name"),
+    (["father", "father's", "father's", "husband", "husband's", "husband's"], "father_name"),
     (["date of birth", "dob", "d.o.b"], "date_of_birth"),
     (["email", "email id", "e-mail"], "email"),
     (["nationality"], "nationality"),
@@ -2092,7 +2092,7 @@ class SmartFormPopulator:
                 p.text = f"Date: {today_str()}"; fixes += 1
         return fixes
 
-    # ------- Simple 6-field filler for the three “basic” forms -------
+    # ------- Simple 6-field filler for the three "basic" forms -------
     def _fill_simple_6fields_everywhere(self, doc: Document) -> int:
         """
         Fill Name, Father's Name, Email, Address (default to CURRENT), Date
@@ -2510,10 +2510,9 @@ class SmartFormPopulator:
                         fixes_applied += 1
 
         # Add signature at the end of the document (EPF Nomination Form)
-        # Look for signature fields in paragraphs - check ALL paragraphs, especially those with "employer" or "establishment"
+        # Look for signature fields in paragraphs - focus on subscriber signature slots
         print(f"  🔍 Starting EPF Nomination signature insertion...")
         print(f"  📷 Signature image path available: {bool(self.signature_image_path)}")
-        signature_inserted = False
 
         def _paragraph_has_image(paragraph) -> bool:
             try:
@@ -2524,7 +2523,6 @@ class SmartFormPopulator:
                 pass
             return False
 
-        # Handle subscriber signature labels first
         subscriber_labels = []
         for idx, paragraph in enumerate(doc.paragraphs):
             text_lower = (paragraph.text or "").strip().lower()
@@ -2536,7 +2534,6 @@ class SmartFormPopulator:
                 continue
 
             inserted = False
-            # Prefer placing signature above the label if there's empty space
             for j in range(1, 4):
                 prev_idx = idx - j
                 if prev_idx < 0:
@@ -2547,6 +2544,7 @@ class SmartFormPopulator:
                     break
                 prev_text = (prev_paragraph.text or "").strip()
                 if not prev_text or self._is_placeholder(prev_text) or len(prev_text) < 3:
+                    prev_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     if self._insert_signature_image(prev_paragraph):
                         fixes_applied += 1
                         inserted = True
@@ -2565,6 +2563,7 @@ class SmartFormPopulator:
                     break
                 next_text = (next_paragraph.text or "").strip()
                 if not next_text or self._is_placeholder(next_text) or len(next_text) < 3:
+                    next_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     if self._insert_signature_image(next_paragraph):
                         fixes_applied += 1
                         inserted = True
@@ -2583,143 +2582,6 @@ class SmartFormPopulator:
             if self._insert_signature_image(new_paragraph):
                 fixes_applied += 1
                 print("  ✅ Inserted subscriber signature in newly added paragraph (before label)")
-        
-        # First, look for the specific "Signature of the employer" pattern
-        for i, p in enumerate(doc.paragraphs):
-            text = (p.text or "").strip()
-            text_lower = text.lower()
-            
-            # Check if paragraph already has an image
-            has_image = False
-            try:
-                for run in p.runs:
-                    if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
-                        has_image = True
-                        break
-            except:
-                pass
-            
-            if has_image:
-                continue
-            
-            # Look for "Signature of the employer" or similar patterns
-            if ("signature" in text_lower and 
-                ("employer" in text_lower or "establishment" in text_lower or "authorised" in text_lower or "authorized" in text_lower)):
-                # This paragraph contains the signature label
-                print(f"  🔍 Found employer signature label: {text[:100]}")
-                
-                # Try multiple strategies:
-                # 1. If paragraph is mostly just the label text (ends with the label), try inserting in same paragraph
-                #    (some forms have label + empty space in same paragraph)
-                if len(text) < 150:  # Reasonable length for a label paragraph
-                    # Check if paragraph ends with signature label (might have space for signature after)
-                    if text_lower.endswith("establishment") or text_lower.endswith("officer"):
-                        # Try inserting in the same paragraph (will clear and add image)
-                        if self._insert_signature_image(p):
-                            fixes_applied += 1
-                            signature_inserted = True
-                            print(f"  ✅ Inserted signature in EPF Nomination Form (same paragraph as employer signature label)")
-                            break
-                
-                # 2. Check next 5 paragraphs for empty signature field (increased from 3)
-                for j in range(1, 6):
-                    if i + j < len(doc.paragraphs):
-                        next_p = doc.paragraphs[i + j]
-                        next_text = (next_p.text or "").strip()
-                        
-                        # Check if next paragraph has image
-                        next_has_image = False
-                        try:
-                            for run in next_p.runs:
-                                if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
-                                    next_has_image = True
-                                    break
-                        except:
-                            pass
-                        
-                        if next_has_image:
-                            continue
-                        
-                        # If next paragraph is empty or just has placeholder text, insert signature there
-                        if not next_text or self._is_placeholder(next_text) or len(next_text) < 10:
-                            if self._insert_signature_image(next_p):
-                                fixes_applied += 1
-                                signature_inserted = True
-                                print(f"  ✅ Inserted signature in EPF Nomination Form (after employer signature label, paragraph {i+j+1})")
-                                break
-                
-                if signature_inserted:
-                    break
-                
-                # 3. If still not found, try inserting in the label paragraph itself (will replace text)
-                if not signature_inserted:
-                    print(f"  ⚠️  Trying to insert signature in label paragraph itself...")
-                    if self._insert_signature_image(p):
-                        fixes_applied += 1
-                        signature_inserted = True
-                        print(f"  ✅ Inserted signature in EPF Nomination Form (replaced employer signature label text)")
-                        break
-        
-        # If not found yet, check last 15 paragraphs for any signature fields
-        if not signature_inserted:
-            for p in doc.paragraphs[-15:]:
-                text = (p.text or "").strip().lower()
-                # Check if paragraph already has an image
-                has_image = False
-                try:
-                    for run in p.runs:
-                        if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
-                            has_image = True
-                            break
-                except:
-                    pass
-                
-                if ("signature" in text and (":" in text or text == "signature")) and not has_image:
-                    # Check if this paragraph is empty or just has "Signature:" text
-                    if text in ["signature:", "signature"] or self._is_placeholder(text):
-                        if self._insert_signature_image(p):
-                            fixes_applied += 1
-                            signature_inserted = True
-                            print(f"  ✅ Inserted signature in EPF Nomination Form paragraph")
-                            break
-        
-        # Also check tables for signature fields (especially at the end)
-        # Look for "employer" or "establishment" signature in tables
-        if not signature_inserted:
-            for table in doc.tables:
-                # Check ALL rows, not just last 3
-                for row in table.rows:
-                    for cell_idx, cell in enumerate(row.cells):
-                        cell_text = (cell.text or "").strip().lower()
-                        
-                        # Look for employer/establishment signature in tables
-                        if ("signature" in cell_text and 
-                            ("employer" in cell_text or "establishment" in cell_text or "authorised" in cell_text or "authorized" in cell_text) and
-                            not self._cell_has_image(cell)):
-                            print(f"  🔍 Found employer signature in table cell: {cell_text[:50]}")
-                            
-                            # Try inserting in the same cell (will clear text)
-                            if self._insert_signature_in_cell(cell):
-                                fixes_applied += 1
-                                signature_inserted = True
-                                print(f"  ✅ Inserted signature in EPF Nomination Form table cell (employer signature)")
-                                break
-                            
-                            # If same cell didn't work, try next cell
-                            if not signature_inserted and cell_idx < len(row.cells) - 1:
-                                next_cell = row.cells[cell_idx + 1]
-                                if not self._cell_has_image(next_cell):
-                                    if self._insert_signature_in_cell(next_cell):
-                                        fixes_applied += 1
-                                        signature_inserted = True
-                                        print(f"  ✅ Inserted signature in EPF Nomination Form table (next cell after employer signature)")
-                                        break
-                    
-                    if signature_inserted:
-                        break
-                
-                if signature_inserted:
-                    break
 
         return fixes_applied
 

@@ -249,7 +249,7 @@ class SmartFormPopulator:
         
     DECLARATION_KEYWORDS = [
     (["name", "member name", "full name", "candidate name"], "name"),
-    (["father", "father’s", "father's", "husband", "husband’s", "husband's"], "father_name"),
+    (["father", "father's", "father's", "husband", "husband's", "husband's"], "father_name"),
     (["date of birth", "dob", "d.o.b"], "date_of_birth"),
     (["email", "email id", "e-mail"], "email"),
     (["nationality"], "nationality"),
@@ -2135,7 +2135,7 @@ class SmartFormPopulator:
                 p.text = f"Date: {today_str()}"; fixes += 1
         return fixes
 
-    # ------- Simple 6-field filler for the three “basic” forms -------
+    # ------- Simple 6-field filler for the three "basic" forms -------
     def _fill_simple_6fields_everywhere(self, doc: Document) -> int:
         """
         Fill Name, Father's Name, Email, Address (default to CURRENT), Date
@@ -2551,9 +2551,7 @@ class SmartFormPopulator:
                         fixes_applied += 1
 
         # Add signature at the end of the document (EPF Nomination Form)
-        # Look for signature fields in paragraphs - check ALL paragraphs, especially those with "employer" or "establishment"
-        signature_inserted = False
-
+        # Look for signature fields in paragraphs - focus on subscriber signature slots
         def _paragraph_has_image(paragraph) -> bool:
             try:
                 for run in paragraph.runs:
@@ -2563,7 +2561,6 @@ class SmartFormPopulator:
                 pass
             return False
 
-        # Handle all subscriber signature labels
         subscriber_labels = []
         for idx, paragraph in enumerate(doc.paragraphs):
             text_lower = (paragraph.text or "").strip().lower()
@@ -2586,6 +2583,7 @@ class SmartFormPopulator:
                     break
                 prev_text = (prev_paragraph.text or "").strip()
                 if not prev_text or self._is_placeholder(prev_text) or len(prev_text) < 3:
+                    prev_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     if self._insert_signature_image(prev_paragraph):
                         fixes_applied += 1
                         inserted = True
@@ -2605,6 +2603,7 @@ class SmartFormPopulator:
                     break
                 next_text = (next_paragraph.text or "").strip()
                 if not next_text or self._is_placeholder(next_text) or len(next_text) < 3:
+                    next_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     if self._insert_signature_image(next_paragraph):
                         fixes_applied += 1
                         inserted = True
