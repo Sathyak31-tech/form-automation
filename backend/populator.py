@@ -2552,6 +2552,51 @@ class SmartFormPopulator:
         # Add signature at the end of the document (EPF Nomination Form)
         # Look for signature fields in paragraphs - check ALL paragraphs, especially those with "employer" or "establishment"
         signature_inserted = False
+
+        def _paragraph_has_image(paragraph) -> bool:
+            try:
+                for run in paragraph.runs:
+                    if run._element.xpath('.//a:blip') or run._element.xpath('.//pic:pic'):
+                        return True
+            except Exception:
+                pass
+            return False
+
+        # 0) Prioritize the subscriber signature block ("Signature or thumb impression of the subscriber")
+        subscriber_signature_inserted = False
+        for idx, p in enumerate(doc.paragraphs):
+            text = (p.text or "")
+            text_lower = text.strip().lower()
+            if "signature" in text_lower and "subscriber" in text_lower:
+                if _paragraph_has_image(p):
+                    subscriber_signature_inserted = True
+                    break
+
+                # If the paragraph is mostly just the label, insert signature directly (replace label)
+                if len(text_lower) <= 60 and "strike out" not in text_lower:
+                    if self._insert_signature_image(p):
+                        fixes_applied += 1
+                        subscriber_signature_inserted = True
+                        print("✅ Inserted signature image for subscriber in label paragraph")
+                        break
+
+                # Otherwise, look for the next few paragraphs that are empty/placeholders
+                for j in range(1, 6):
+                    if idx + j >= len(doc.paragraphs):
+                        break
+                    next_p = doc.paragraphs[idx + j]
+                    if _paragraph_has_image(next_p):
+                        subscriber_signature_inserted = True
+                        break
+                    next_text = (next_p.text or "").strip()
+                    if not next_text or self._is_placeholder(next_text) or len(next_text) < 3:
+                        if self._insert_signature_image(next_p):
+                            fixes_applied += 1
+                            subscriber_signature_inserted = True
+                            print(f"✅ Inserted signature image for subscriber in paragraph {idx + j + 1}")
+                        break
+                if subscriber_signature_inserted:
+                    break
         
         # First, look for the specific "Signature of the employer" pattern
         for i, p in enumerate(doc.paragraphs):
