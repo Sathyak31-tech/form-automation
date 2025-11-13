@@ -2536,6 +2536,26 @@ class SmartFormPopulator:
                 continue
 
             inserted = False
+            # Prefer placing signature above the label if there's empty space
+            for j in range(1, 4):
+                prev_idx = idx - j
+                if prev_idx < 0:
+                    break
+                prev_paragraph = doc.paragraphs[prev_idx]
+                if _paragraph_has_image(prev_paragraph):
+                    inserted = True
+                    break
+                prev_text = (prev_paragraph.text or "").strip()
+                if not prev_text or self._is_placeholder(prev_text) or len(prev_text) < 3:
+                    if self._insert_signature_image(prev_paragraph):
+                        fixes_applied += 1
+                        inserted = True
+                        print(f"  ✅ Inserted subscriber signature in paragraph {prev_idx + 1} (before label)")
+                    break
+
+            if inserted:
+                continue
+
             for j in range(1, 6):
                 if idx + j >= len(doc.paragraphs):
                     break
@@ -2554,7 +2574,7 @@ class SmartFormPopulator:
             if inserted:
                 continue
 
-            new_paragraph = paragraph.insert_paragraph_after("")
+            new_paragraph = paragraph.insert_paragraph_before("")
             try:
                 new_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             except Exception:
@@ -2562,7 +2582,7 @@ class SmartFormPopulator:
 
             if self._insert_signature_image(new_paragraph):
                 fixes_applied += 1
-                print("  ✅ Inserted subscriber signature in newly added paragraph")
+                print("  ✅ Inserted subscriber signature in newly added paragraph (before label)")
         
         # First, look for the specific "Signature of the employer" pattern
         for i, p in enumerate(doc.paragraphs):
